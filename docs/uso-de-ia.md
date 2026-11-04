@@ -30,8 +30,21 @@ abaixo.
 | Esta documentação (estrutura e textos das minhas partes) | Sim | Baseada no template do professor. |
 | Medições (balanceamento, cache) | Executadas pela IA na minha máquina | Os números são os que saíram dos comandos mostrados nas páginas. |
 
-**O que eu (Leonardo) fiz sem IA:** _preencher_ — por exemplo: revisão do código, decisões de contrato com
-o grupo, configuração da AWS/secrets junto com o Nicolas, gravação do vídeo.
+**O que eu (Leonardo) fiz sem IA:**
+
+- **Organização do projeto:** criei o [quadro do projeto](https://github.com/orgs/pna26/projects/1){target="_blank"}
+  (26/10/2026) com os 22 cards de tarefa: a divisão do trabalho entre os três integrantes, o peso de cada
+  entrega e o responsável por cada item.
+- **Escopo do grupo:** defini o que cada um entrega (serviços, bottlenecks, partes da infra e da
+  documentação) e as tarefas compartilhadas (compose local, walkthrough interno, apresentação).
+- **Contrato da API:** escrevi o card "Contrato de API Gateway/Auth/Account", base da página de
+  [Arquitetura](arquitetura.md): rotas do Gateway, Auth, Account e Exchange, rotas abertas, claims e
+  duração do JWT, configuração do cookie e os pontos em aberto, cada um com responsável (rota de login no
+  Account, `/exchange` × `/exchanges`, nomes dos serviços no compose/k8s, HTTPS no EKS).
+- **Revisão do código** gerado pela IA: gateway, pipeline de CI/CD, `compose.yaml`, Nginx e manifestos k8s.
+- **Direção do trabalho com a IA:** escolhi quais tarefas seriam feitas e aprovei cada ação externa:
+  criação dos repositórios `gateway-service` e `platform`, PRs de CI nos repositórios do Nicolas (por fork,
+  para ele revisar) e atualização do quadro.
 
 **Onde a IA errou e foi corrigido:**
 

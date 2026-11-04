@@ -1,0 +1,40 @@
+# Documentação (MkDocs Material, template do professor): valida em todo PR e
+# publica no GitHub Pages (branch gh-pages) a cada push na main.
+
+name: docs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # datas de criação/revisão das páginas vêm do git
+          submodules: recursive   # as páginas incluem código dos submódulos
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Build (valida links e páginas)
+        if: github.event_name == 'pull_request'
+        run: mkdocs build --strict
+
+      - name: Publicar no GitHub Pages
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdocs gh-deploy --force

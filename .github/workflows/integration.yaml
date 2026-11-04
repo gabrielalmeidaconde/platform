@@ -1,0 +1,66 @@
+# Integração: sobe a plataforma inteira com o compose (submódulos), roda o
+# smoke test ponta a ponta e faz uma varredura dinâmica (DAST) com o OWASP ZAP
+# contra o gateway, através do Nginx - do mesmo jeito que um usuário acessaria.
+
+name: integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # toda segunda às 9h (BRT): pega CVEs novas e quebras nos submódulos
+    - cron: '0 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    name: compose + smoke test + OWASP ZAP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Submódulos na última versão da main de cada serviço
+        if: github.event_name != 'pull_request'
+        run: git submodule update --remote --recursive
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build dos serviços (interfaces + jars) e .env
+        run: ./scripts/build.sh
+
+      - name: docker compose up
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Smoke test (contrato, 401, id-account, balanceamento, cache)
+        run: ./scripts/smoke-test.sh
+
+      - name: Permissão de escrita para o container do ZAP (usuário zap)
+        run: chmod a+w "$GITHUB_WORKSPACE"
+
+      - name: OWASP ZAP baseline (DAST)
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: http://localhost:8080
+          rules_file_name: .zap/rules.tsv
+          cmd_options: -a
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-report
+
+      - name: Logs (em caso de falha)
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v

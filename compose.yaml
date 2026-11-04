@@ -1,0 +1,112 @@
+# Plataforma completa rodando localmente.
+#   ./scripts/build.sh            # compila os jars (interfaces + serviços)
+#   docker compose up -d --build  # sobe tudo; entrada em http://localhost:8080
+#
+# Só o lb (Nginx) publica porta: gateway, auth, account, redis e db ficam na
+# rede interna do compose (camada confiável).
+
+name: store
+
+services:
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${DB_USER:-store}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-store}
+      POSTGRES_DB: ${DB_NAME:-store}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Bottleneck: cache. Guarda token -> id da conta para o gateway não chamar
+  # o Auth em toda requisição (ver api/gateway-service/.../TokenCache.java)
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  account:
+    build:
+      context: ./api/account-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_DB: ${DB_NAME:-store}
+      DATABASE_USERNAME: ${DB_USER:-store}
+      DATABASE_PASSWORD: ${DB_PASSWORD:-store}
+    deploy:
+      replicas: 1
+    depends_on:
+      db:
+        condition: service_healthy
+
+  auth:
+    build:
+      context: ./api/auth-service
+      dockerfile: Dockerfile
+    environment:
+      # segredo vem do .env (scripts/build.sh gera um aleatório); nunca no código
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?defina JWT_SECRET_KEY no .env (veja .env.example)}
+      JWT_DURATION: ${JWT_DURATION:-86400000}
+    deploy:
+      replicas: 1
+    depends_on:
+      - account
+
+  gateway:
+    build:
+      context: ./api/gateway-service
+      dockerfile: Dockerfile
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # liga/desliga o cache do token (para comparar no teste de carga)
+      TOKEN_CACHE_ENABLED: ${TOKEN_CACHE_ENABLED:-true}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:8080}
+    # sem "ports": só é alcançável pelo lb
+    deploy:
+      replicas: ${GATEWAY_REPLICAS:-2}
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      account:
+        condition: service_started
+
+  # Bottleneck: balanceamento de carga (Nginx na frente das réplicas do gateway)
+  lb:
+    image: nginx:1.29-alpine
+    ports:
+      - "${LB_PORT:-8080}:80"
+    volumes:
+      - ./setup/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - gateway
+
+  # Exchange (Python, Gabriel). Entra com:
+  #   docker compose --profile exchange up -d --build
+  # quando o submódulo api/exchange-service existir.
+  exchange:
+    profiles: [ "exchange" ]
+    build:
+      context: ./api/exchange-service
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 1
+
+volumes:
+  db_data:
+  redis_data:

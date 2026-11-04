@@ -1,0 +1,48 @@
+# Infra compartilhada no EKS: balanceador (Nginx, Service LoadBalancer) e
+# Redis (cache). Os microsserviços fazem o próprio deploy pelo service.yaml.
+# Só roda quando as variáveis/segredos da AWS estiverem configurados na org.
+
+name: infra
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'k8s/**', '.github/workflows/infra.yaml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: kubectl apply k8s/
+    runs-on: ubuntu-latest
+    if: vars.EKS_CLUSTER != ''
+    concurrency:
+      group: deploy-infra
+      cancel-in-progress: false
+    env:
+      NAMESPACE: ${{ vars.K8S_NAMESPACE || 'store' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: kubeconfig
+        env:
+          CLUSTER: ${{ vars.EKS_CLUSTER }}
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+          kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+
+      - name: apply
+        run: |
+          kubectl apply -n "$NAMESPACE" -f k8s/
+          kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=180s
+          kubectl rollout status deployment/lb -n "$NAMESPACE" --timeout=180s
+          kubectl get svc lb -n "$NAMESPACE" -o wide

@@ -1,0 +1,12 @@
+.env
+site/
+env/
+venv/
+.venv/
+.cache/
+.vscode/
+.idea/
+.DS_Store
+target/
+__pycache__/
+zap-report/

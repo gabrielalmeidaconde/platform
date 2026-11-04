@@ -1,0 +1,12 @@
+[submodule "api/account"]
+	path = api/account
+	url = https://github.com/pna26/account.git
+[submodule "api/account-service"]
+	path = api/account-service
+	url = https://github.com/pna26/account-service.git
+[submodule "api/auth"]
+	path = api/auth
+	url = https://github.com/pna26/auth.git
+[submodule "api/auth-service"]
+	path = api/auth-service
+	url = https://github.com/pna26/auth-service.git

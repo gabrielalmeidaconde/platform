@@ -1,0 +1,372 @@
+# Pipeline de CI/CD reutilizável por TODOS os microsserviços da pna26.
+#
+# Cada repositório só precisa de um .github/workflows/ci.yaml pequeno que chama
+# este arquivo (exemplo em docs/devops/ci-cd.md). Etapas:
+#
+#   1. build + testes          (mvn verify | pytest)
+#   2. Trivy no código         (dependências, segredos e misconfig de Dockerfile/k8s)
+#   3. build da imagem + Trivy na imagem (SO + jar/libs)
+#   4. push multi-arch         (GHCR sempre; ECR quando houver credenciais da AWS)
+#   5. deploy no EKS           (kubectl apply do k8s/ do repo + rollout)
+#
+# 4 e 5 só rodam em push na main. O pipeline falha se o Trivy achar
+# vulnerabilidade CRITICAL com correção disponível ou um segredo no código.
+
+name: service
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Nome do Deployment/container no Kubernetes (ex.: gateway)
+        type: string
+        required: true
+      image:
+        description: Nome da imagem no registry (ex.gateway-service). Vazio = biblioteca (sem imagem/deploy)
+        type: string
+        default: ''
+      language:
+        description: java | python
+        type: string
+        default: java
+      maven-deps:
+        description: Repos de interface da org para "mvn install" antes do build (ex. "account auth")
+        type: string
+        default: ''
+      aws-region:
+        type: string
+        default: ''
+      eks-cluster:
+        description: Nome do cluster EKS. Vazio = não faz deploy
+        type: string
+        default: ''
+      k8s-namespace:
+        type: string
+        default: store
+      fail-on-critical:
+        description: Falhar o pipeline com CVE CRITICAL corrigível ou segredo exposto
+        type: boolean
+        default: true
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_SESSION_TOKEN:
+        required: false
+    outputs:
+      image:
+        description: Imagem publicada (registry/nome:sha-xxxxxxx)
+        value: ${{ jobs.build.outputs.image }}
+
+env:
+  # Trivy 0.76.1 fixado por digest (não por tag): uma tag pode ser reapontada
+  # num ataque de supply chain, o digest não
+  TRIVY_IMAGE: aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  TRIVY_DB: public.ecr.aws/aquasecurity/trivy-db,ghcr.io/aquasecurity/trivy-db
+  TRIVY_JAVA_DB: public.ecr.aws/aquasecurity/trivy-java-db,ghcr.io/aquasecurity/trivy-java-db
+
+jobs:
+
+  build:
+    name: build, testes e scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+    env:
+      IMAGE_NAME: ${{ inputs.image }}
+      PUBLISH: ${{ inputs.image != '' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && inputs.aws-region != '' }}
+    steps:
+
+      - uses: actions/checkout@v7
+
+      # ---------------------------------------------------------------- build
+      - name: Java 25
+        if: inputs.language == 'java'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Interfaces da org (mvn install)
+        if: inputs.language == 'java' && inputs.maven-deps != ''
+        env:
+          DEPS: ${{ inputs.maven-deps }}
+        run: |
+          for dep in $DEPS; do
+            echo "::group::mvn install $dep"
+            git clone --depth 1 "https://github.com/${GITHUB_REPOSITORY_OWNER}/${dep}.git" "$RUNNER_TEMP/$dep"
+            mvn -B -q -f "$RUNNER_TEMP/$dep/pom.xml" install -DskipTests
+            echo "::endgroup::"
+          done
+
+      - name: Build e testes (mvn verify)
+        if: inputs.language == 'java'
+        run: mvn -B verify
+
+      - name: Python 3.12
+        if: inputs.language == 'python'
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Dependências e testes (pytest)
+        if: inputs.language == 'python'
+        run: |
+          [ -f requirements.txt ] && pip install -r requirements.txt
+          if ls tests test_*.py */test_*.py >/dev/null 2>&1; then
+            pip install pytest && pytest -q
+          else
+            echo "::warning::nenhum teste encontrado"
+          fi
+
+      # ---------------------------------------------------------- scan: código
+      - name: Data (chave do cache do Trivy)
+        id: date
+        run: echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache do banco do Trivy
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.date.outputs.today }}
+          restore-keys: trivy-db-
+
+      - name: Trivy - código (dependências, segredos, Dockerfile e k8s)
+        run: |
+          mkdir -p ~/.cache/trivy ~/.m2 reports
+          # .trivyignore é opcional (achados aceitos, com justificativa)
+          IGNORE=(); [ -f .trivyignore ] && IGNORE=(--ignorefile /src/.trivyignore)
+          docker run --rm \
+            -v "$PWD:/src" -v "$HOME/.m2:/root/.m2:ro" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" fs /src \
+              --scanners vuln,secret,misconfig \
+              --severity MEDIUM,HIGH,CRITICAL --ignore-unfixed \
+              --skip-dirs /src/target --skip-dirs /src/reports \
+              "${IGNORE[@]}" \
+              --offline-scan \
+              --db-repository "$TRIVY_DB" --java-db-repository "$TRIVY_JAVA_DB" \
+              --format json --output /src/reports/trivy-fs.json
+
+      - name: Trivy - imagem (build local)
+        if: inputs.image != ''
+        id: localimage
+        run: |
+          docker build -t "local/$IMAGE_NAME:scan" .
+          IGNORE=(); [ -f .trivyignore ] && IGNORE=(--ignorefile /src/.trivyignore)
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/src" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image "local/$IMAGE_NAME:scan" \
+              --scanners vuln,secret \
+              --severity MEDIUM,HIGH,CRITICAL --ignore-unfixed \
+              "${IGNORE[@]}" \
+              --db-repository "$TRIVY_DB" --java-db-repository "$TRIVY_JAVA_DB" \
+              --format json --output /src/reports/trivy-image.json
+
+      - name: Relatório do Trivy (resumo do job + SARIF)
+        if: always()
+        run: |
+          shopt -s nullglob
+          {
+            echo "## Trivy - varredura de vulnerabilidades"
+            echo
+            echo "| Alvo | Tipo | CRITICAL | HIGH | MEDIUM | Segredos | Misconfig |"
+            echo "|---|---|---:|---:|---:|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for report in reports/trivy-*.json; do
+            jq -r '.Results[]? | [
+                .Target, .Type,
+                ([.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length),
+                ([.Vulnerabilities[]? | select(.Severity=="HIGH")] | length),
+                ([.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length),
+                (.Secrets // [] | length),
+                ([.Misconfigurations[]? | select(.Status=="FAIL")] | length)
+              ] | "| " + (map(tostring) | join(" | ")) + " |"' "$report" >> "$GITHUB_STEP_SUMMARY"
+            name=$(basename "$report" .json)
+            docker run --rm -v "$PWD/reports:/reports" "$TRIVY_IMAGE" \
+              convert --format sarif --output "/reports/$name.sarif" "/reports/$name.json"
+            docker run --rm -v "$PWD/reports:/reports" "$TRIVY_IMAGE" \
+              convert --format table "/reports/$name.json" || true
+          done
+
+      - name: Enviar para a aba Security (código)
+        if: always() && hashFiles('reports/trivy-fs.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Enviar para a aba Security (imagem)
+        if: always() && hashFiles('reports/trivy-image.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/trivy-image.sarif
+          category: trivy-image
+
+      - name: Guardar relatórios
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-${{ inputs.service }}
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: Portão de segurança (CRITICAL corrigível ou segredo = falha)
+        if: inputs.fail-on-critical
+        run: |
+          shopt -s nullglob
+          total=0
+          for report in reports/trivy-*.json; do
+            n=$(jq '[.Results[]? | ((.Vulnerabilities // []) | map(select(.Severity=="CRITICAL")) | length) + ((.Secrets // []) | length)] | add // 0' "$report")
+            echo "$report: $n achado(s) bloqueante(s)"
+            total=$((total + n))
+          done
+          if [ "$total" -gt 0 ]; then
+            echo "::error::Trivy encontrou $total vulnerabilidade(s) CRITICAL com correção ou segredo(s) exposto(s)"
+            exit 1
+          fi
+
+      # ------------------------------------------------------ publicar imagem
+      - name: QEMU (build multi-arch)
+        if: env.PUBLISH == 'true'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Buildx
+        if: env.PUBLISH == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login no GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Credenciais da AWS
+        if: env.PUBLISH == 'true' && env.HAS_AWS == 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login no ECR (e cria o repositório se faltar)
+        if: env.PUBLISH == 'true' && env.HAS_AWS == 'true'
+        id: ecr
+        run: |
+          aws ecr describe-repositories --repository-names "$IMAGE_NAME" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "$IMAGE_NAME" \
+              --image-scanning-configuration scanOnPush=true >/dev/null
+          registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          echo "registry=$registry" >> "$GITHUB_OUTPUT"
+
+      - name: Tags
+        if: env.PUBLISH == 'true'
+        id: tags
+        env:
+          ECR: ${{ steps.ecr.outputs.registry }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          short="sha-${GITHUB_SHA::7}"
+          tags="ghcr.io/${OWNER,,}/$IMAGE_NAME:$short,ghcr.io/${OWNER,,}/$IMAGE_NAME:latest"
+          deploy="ghcr.io/${OWNER,,}/$IMAGE_NAME:$short"
+          if [ -n "$ECR" ]; then
+            tags="$tags,$ECR/$IMAGE_NAME:$short,$ECR/$IMAGE_NAME:latest"
+            deploy="$ECR/$IMAGE_NAME:$short"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+
+      - name: Build e push (linux/amd64 + linux/arm64)
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ inputs.image }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.image }}
+
+      - name: Imagem publicada
+        if: env.PUBLISH == 'true'
+        id: publish
+        env:
+          IMAGE: ${{ steps.tags.outputs.deploy }}
+        run: |
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "### Imagem publicada: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: deploy no EKS
+    needs: build
+    if: >-
+      inputs.image != '' && inputs.eks-cluster != '' &&
+      github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-${{ inputs.service }}
+      cancel-in-progress: false
+    env:
+      SERVICE: ${{ inputs.service }}
+      IMAGE_NAME: ${{ inputs.image }}
+      IMAGE: ${{ needs.build.outputs.image }}
+      NAMESPACE: ${{ inputs.k8s-namespace }}
+      CLUSTER: ${{ inputs.eks-cluster }}
+      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && inputs.aws-region != '' }}
+    steps:
+
+      - name: Credenciais configuradas?
+        if: env.HAS_AWS != 'true'
+        run: |
+          echo "::error::EKS_CLUSTER definido mas faltam AWS_REGION ou os secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: kubeconfig do cluster
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+          kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+
+      - name: kubectl apply
+        run: |
+          if [ ! -d k8s ]; then
+            echo "::notice::este repositório não tem k8s/: nada para aplicar"
+            exit 0
+          fi
+          # troca a imagem base (:latest) pela imagem do commit
+          sed -i -E "s#(image:[[:space:]]*)[^[:space:]]*/${IMAGE_NAME}:[^[:space:]]+#\1${IMAGE}#" k8s/*.y*ml
+          grep -n "image:" k8s/*.y*ml
+          kubectl apply -n "$NAMESPACE" -f k8s/
+          kubectl rollout status "deployment/$SERVICE" -n "$NAMESPACE" --timeout=300s
+          kubectl get pods -n "$NAMESPACE" -l "app=$SERVICE" -o wide
+          {
+            echo "### Deploy no EKS"
+            echo "- cluster: \`$CLUSTER\` / namespace: \`$NAMESPACE\`"
+            echo "- deployment: \`$SERVICE\` -> \`$IMAGE\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,158 @@
+site_name: Platform 2026.2 - pna26
+site_description: Plataforma de microsserviços (Gateway, Auth, Account, Exchange) no EKS - Insper
+site_author: Leonardo, Nicolas e Gabriel
+site_url: https://pna26.github.io/platform
+repo_url: https://github.com/pna26/platform
+repo_name: pna26/platform
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    # Light mode
+    - scheme: default
+      primary: grey
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      primary: grey
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: grey
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      primary: grey
+      scheme: slate
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to system preference
+  features:
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+    - content.tooltips
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.top
+    - navigation.path
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+  icon:
+    admonition:
+      note: fontawesome/solid/note-sticky
+      abstract: fontawesome/solid/book
+      info: fontawesome/solid/circle-info
+      tip: fontawesome/solid/bullhorn
+      success: fontawesome/solid/check
+      question: fontawesome/solid/circle-question
+      warning: fontawesome/solid/triangle-exclamation
+      failure: fontawesome/solid/bomb
+      danger: fontawesome/solid/skull
+      bug: fontawesome/solid/robot
+      example: fontawesome/solid/flask
+      quote: fontawesome/solid/quote-left
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - markdown_grid_tables
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      # permite incluir o código dos submódulos (api/...) nas páginas
+      base_path: [ "." ]
+      check_paths: true
+      url_download: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: python
+          class: python
+          validator: !!python/name:markdown_exec.validator
+          format: !!python/name:markdown_exec.formatter
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - footnotes
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.blocks.caption
+  - tables
+
+plugins:
+  - glightbox
+  - git-revision-date-localized:
+      enable_creation_date: true
+      fallback_to_build_date: true
+  - git-authors:
+      fallback_to_empty: true
+  - search
+  - badges
+  - minify:
+      minify_html: true
+  - markdown-exec
+  - render_swagger:
+      allow_arbitrary_locations: true
+  - termynal:
+      prompt_literal_start:
+        - "$"
+        - ">"
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Arquitetura: arquitetura.md
+  - Como rodar: como-rodar.md
+  - Microsserviços:
+      - Gateway: servicos/gateway.md
+      - Auth: servicos/auth.md
+      - Account: servicos/account.md
+      - Exchange: servicos/exchange.md
+  - Bottlenecks:
+      - bottlenecks/index.md
+      - Balanceamento de carga: bottlenecks/load-balancing.md
+      - Cache (Redis): bottlenecks/cache.md
+      - Varredura de vulnerabilidades: bottlenecks/vulnerability-scanning.md
+      - Observabilidade: bottlenecks/observability.md
+      - Mensageria: bottlenecks/messaging.md
+  - DevOps e nuvem:
+      - CI/CD: devops/ci-cd.md
+      - AWS: devops/aws.md
+      - EKS: devops/eks.md
+      - Testes de carga: devops/load-testing.md
+      - PaaS, custos e SLA: devops/custos-sla.md
+  - Uso de IA: uso-de-ia.md
+  - Apresentação: apresentacao.md
+  - Esta documentação: thisdocumentation.md

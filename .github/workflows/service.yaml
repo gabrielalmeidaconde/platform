@@ -120,11 +120,11 @@ jobs:
         if: inputs.language == 'python'
         run: |
           [ -f requirements.txt ] && pip install -r requirements.txt
-          if ls -d ./tests ./test_*.py ./*/test_*.py >/dev/null 2>&1; then
-            pip install pytest && pytest -q
-          else
-            echo "::warning::nenhum teste encontrado"
-          fi
+          pip install pytest
+          # o pytest devolve 5 quando não acha nenhum teste: vira só um aviso
+          set +e; pytest -q; rc=$?; set -e
+          [ "$rc" -eq 5 ] && { echo "::warning::nenhum teste encontrado"; exit 0; }
+          exit "$rc"
 
       # ---------------------------------------------------------- scan: código
       - name: Data (chave do cache do Trivy)

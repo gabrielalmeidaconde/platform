@@ -18,33 +18,33 @@ on:
   workflow_call:
     inputs:
       service:
-        description: Nome do Deployment/container no Kubernetes (ex.: gateway)
+        description: 'Nome do Deployment/container no Kubernetes (ex.: gateway)'
         type: string
         required: true
       image:
-        description: Nome da imagem no registry (ex.gateway-service). Vazio = biblioteca (sem imagem/deploy)
+        description: 'Nome da imagem no registry (ex.: gateway-service). Vazio = biblioteca (sem imagem/deploy)'
         type: string
         default: ''
       language:
-        description: java | python
+        description: 'java | python'
         type: string
         default: java
       maven-deps:
-        description: Repos de interface da org para "mvn install" antes do build (ex. "account auth")
+        description: 'Repos de interface da org para "mvn install" antes do build (ex. "account auth")'
         type: string
         default: ''
       aws-region:
         type: string
         default: ''
       eks-cluster:
-        description: Nome do cluster EKS. Vazio = não faz deploy
+        description: 'Nome do cluster EKS. Vazio = não faz deploy'
         type: string
         default: ''
       k8s-namespace:
         type: string
         default: store
       fail-on-critical:
-        description: Falhar o pipeline com CVE CRITICAL corrigível ou segredo exposto
+        description: 'Falhar o pipeline com CVE CRITICAL corrigível ou segredo exposto'
         type: boolean
         default: true
     secrets:
@@ -56,7 +56,7 @@ on:
         required: false
     outputs:
       image:
-        description: Imagem publicada (registry/nome:sha-xxxxxxx)
+        description: 'Imagem publicada (registry/nome:sha-xxxxxxx)'
         value: ${{ jobs.build.outputs.image }}
 
 env:
@@ -120,7 +120,7 @@ jobs:
         if: inputs.language == 'python'
         run: |
           [ -f requirements.txt ] && pip install -r requirements.txt
-          if ls tests test_*.py */test_*.py >/dev/null 2>&1; then
+          if ls -d ./tests ./test_*.py ./*/test_*.py >/dev/null 2>&1; then
             pip install pytest && pytest -q
           else
             echo "::warning::nenhum teste encontrado"

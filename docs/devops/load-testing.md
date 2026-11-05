@@ -53,9 +53,10 @@ com código `99` se algum estourar:
 ./scripts/load-test.sh                                  # mixed, perfil load, 50 VUs, 1 min
 SCENARIO=auth PROFILE=stress VUS=50 ./scripts/load-test.sh
 SCENARIO=exchange PROFILE=spike VUS=20 ./scripts/load-test.sh
+THINK=0 SCENARIO=auth PROFILE=stress VUS=25 ./scripts/load-test.sh   # sem pausa: limite de vazão
 BASE_URL=http://<endereço-do-elb> ./scripts/load-test.sh   # contra o EKS
 
-./scripts/load-matrix.sh        # todos os experimentos abaixo (~20 min) -> load/results/RESULTS.md
+./scripts/load-matrix.sh        # todos os experimentos abaixo (~25 min) -> load/results/RESULTS.md
 ```
 
 Enquanto roda, abra o Grafana em [http://localhost:3000](http://localhost:3000){target="_blank"}: a
@@ -73,36 +74,87 @@ esvaziado antes de cada rodada):
 | 2 | Réplicas do gateway | `GATEWAY_REPLICAS` = 1 × 2 × 4 | `auth` / `stress` | Mais réplicas atrasam o ponto em que o p95 estoura — **até** o gargalo passar para outro componente (Account/PostgreSQL ou a própria CPU da máquina). |
 | 3 | Cache da cotação | `EXCHANGE_CACHE_TTL` = `0` × `30` | `exchange` / `load`, 10 VUs, 30 s | Sem cache, a latência do Exchange é a da API externa e aparecem `429`; com cache, ~1 chamada externa a cada 30 s por réplica. Poucos VUs de propósito: não queremos martelar um serviço de terceiros. |
 | 4 | Uso real | configuração padrão | `mixed` / `load` | Dentro do SLO. |
+| 5 | Saturação | `GATEWAY_REPLICAS` = 1 × 4, **`THINK=0`** (sem pausa) | `auth` / `stress` até 200 VUs | Com pausa, o experimento 2 não chega ao limite; sem pausa, cada VU dispara o mais rápido possível e mostra o que quebra primeiro. |
 
 ## Resultados
 
-!!! warning "A medir"
-
-    Os scripts estão prontos mas a bateria ainda não foi executada. Rodar `./scripts/load-matrix.sh`
-    e colar aqui a tabela de `load/results/RESULTS.md`, com prints do Grafana durante os
-    experimentos 1 e 2. **Não preencher com números estimados.**
+Medidos em **05/11/2026** com `./scripts/load-matrix.sh` (os experimentos 3 e 5 foram rodados de novo
+com `ONLY="3 5"`). Máquina: Windows 11 + Docker Desktop (WSL2), 12 CPUs lógicas, 7,3 GiB de RAM para
+o Docker. **k6, Nginx, gateway, serviços, banco, Prometheus e Grafana na mesma máquina.** Latências
+só das respostas esperadas e só da fase de teste (o cadastro/login do `setup()` fica de fora).
 
 | Execução | Cenário | Perfil | VUs máx. | Requisições | req/s | p50 (ms) | p95 (ms) | p99 (ms) | Erros |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| token-cache-off | auth | load | | | | | | | |
-| token-cache-on | auth | load | | | | | | | |
-| replicas-1 | auth | stress | | | | | | | |
-| replicas-2 | auth | stress | | | | | | | |
-| replicas-4 | auth | stress | | | | | | | |
-| exchange-cache-off | exchange | load | | | | | | | |
-| exchange-cache-on | exchange | load | | | | | | | |
-| mixed-load | mixed | load | | | | | | | |
+| token-cache-off | auth | load | 50 | 7.416 | 80,8 | 5 | 12 | 20 | 0,00 % |
+| token-cache-on | auth | load | 50 | 7.448 | 79,7 | 4 | **7** | 15 | 0,00 % |
+| replicas-1 | auth | stress | 400 | 41.110 | 290,9 | 2 | 3 | 4 | 0,00 % |
+| replicas-2 | auth | stress | 400 | 40.810 | 287,1 | 2 | 17 | 114 | 0,00 % |
+| replicas-4 | auth | stress | 400 | 40.918 | 285,8 | 3 | 7 | 23 | 0,00 % |
+| exchange-cache-off | exchange | load | 10 | 445 | 7,3 | 23 | 49 | 69 | 0,00 % |
+| exchange-cache-on | exchange | load | 10 | 454 | 7,5 | 3 | **4** | 17 | 0,00 % |
+| mixed-load | mixed | load | 50 | 6.605 | 72,1 | 4 | 62 | 197 | 0,00 % |
+| saturation-1 | auth | stress, `THINK=0` | 200 | 578.564 | **4.120** | 13 | 43 | 69 | **0,57 %** |
+| saturation-4 | auth | stress, `THINK=0` | 200 | 387.296 | 2.697 | 14 | 88 | 166 | **0,00 %** |
 
-### Como ler
+**Todos os cenários com pausa (1–4) ficaram dentro do SLO** (erros < 1 %, p95 < 500 ms, p99 < 1,5 s).
 
-- **Local, tudo na mesma máquina:** k6, Nginx, réplicas do gateway, serviços e banco disputam a mesma
-  CPU. Os números mostram **tendências** (com × sem cache, 1 × 4 réplicas), não a capacidade real.
-  Mais réplicas na mesma máquina podem até piorar quando a CPU já está no limite — isso é um resultado,
-  não um erro. Para capacidade real, rodar com `BASE_URL` apontando para o EKS a partir de outra máquina.
-- **Ponto de quebra (stress):** olhar no Grafana em que número de VUs o p95 do k6 passa de 500 ms e qual
-  painel satura junto (CPU das réplicas, heap, erros 5xx).
-- **Cache do token:** além da latência, comparar `gateway_token_cache_total` — a diferença de chamadas
-  ao Auth é o ganho principal (ver a conclusão da página [Cache](../bottlenecks/cache.md)).
+### O que os números mostram
+
+**1. Cache do token (Redis) — o Auth sai do caminho.** Com o cache ligado, o Prometheus registrou
+**7.571 hits e 21 misses** em `gateway_token_cache_total` durante a rodada: 99,7 % das validações não
+chamaram o Auth (os 21 misses são ≈ 1 por usuário do teste). Sem cache, todas as ≈ 7.400 requisições
+passaram pelo `POST /auth/solve`. A latência caiu de p95 12 → **7 ms** (−42 %). A vazão é a mesma nas
+duas rodadas porque quem dita o ritmo é a pausa dos usuários, não o servidor.
+
+**2. Cache da cotação — a API externa sai do caminho.** Sem cache, toda cotação ia até a AwesomeAPI:
+p50 de 23 ms e p95 de 49 ms, a latência de um serviço de terceiros. Com o cache de 30 s, p50 de **3 ms** e
+p95 de **4 ms** (−92 %). Em 10 usuários a API externa aguentou sem `429`, mas o volume de chamadas a ela
+cai de ≈ 7 por segundo para 1 a cada 30 s por réplica — é isso que protege do limite de requisições.
+
+**3. Réplicas com carga "realista" — um gateway sobra.** Com a pausa entre ações, 400 usuários geram
+≈ 290 req/s, e uma réplica só responde com p95 de 3 ms. As diferenças entre 1, 2 e 4 réplicas
+(3 / 17 / 7 ms) são ruído de JVMs recém-criadas (ainda sem o JIT aquecido), não ganho nem perda.
+Conclusão honesta: **nessa carga o gateway não é o gargalo**; o motivo para ter 2+ réplicas é
+disponibilidade (uma pode cair), não capacidade.
+
+**4. Saturação — achamos o gargalo real, e não era o gateway.** Sem pausa, a plataforma passou de
+**4.100 req/s** com uma réplica do gateway, mas **0,57 % das requisições falharam (3.279)**, todas em
+`GET /auth/me`, nenhuma em `GET /accounts/{id}`. O gateway devolveu `500` e o log do Auth mostrou
+exatamente **3.279 × `java.net.BindException: Cannot assign requested address`**:
+
+``` mermaid
+flowchart LR
+    gw[gateway] -->|"GET /auth/me"| auth[Auth]
+    auth -->|"Feign: 1 conexão TCP nova<br/>por chamada (sem pool)"| acc[Account]
+    auth -.-x|"portas efêmeras<br/>esgotadas → 500"| acc
+```
+
+O `GET /auth/me` do Auth chama o Account pelo **OpenFeign com o cliente HTTP padrão, sem pool de
+conexões**: cada requisição abre uma conexão TCP nova, e a 4.000 req/s as portas locais do container do
+Auth acabam (as fechadas ficam em `TIME_WAIT`). Com 4 réplicas do gateway a máquina ficou mais
+ocupada (CPU em ≈ 83 % nas duas rodadas, 4 JVMs disputando os mesmos núcleos), a vazão caiu para
+2.697 req/s e o Auth não chegou no limite — por isso 0 erros, mas p95 o dobro.
+
+!!! tip "Correção sugerida (Auth — Nicolas)"
+
+    Trocar o cliente do Feign por um com **pool de conexões** e keep-alive — adicionar
+    `io.github.openfeign:feign-hc5` ao `auth-service` e `spring.cloud.openfeign.httpclient.hc5.enabled=true`.
+    Com conexões reaproveitadas, o Auth deixa de abrir uma porta por requisição. Depois, repetir
+    `ONLY=5 ./scripts/load-matrix.sh` para confirmar que os `500` somem.
+
+**5. Uso real (`mixed`).** Dentro do SLO, mas com a cauda mais longa da bateria (p95 62 ms, p99 197 ms):
+5 % das ações são `POST /auth/login`, que faz o hash da senha (custoso de propósito) e emite o JWT.
+
+### Limitações
+
+- **Tudo na mesma máquina:** o k6 disputa CPU com a plataforma. Os números mostram **tendências e
+  gargalos**, não a capacidade do EKS. Em nós separados, mais réplicas devem *aumentar* a vazão —
+  aqui ficaram presas à mesma CPU.
+- **Rodadas curtas (1–3 min) e uma execução por configuração:** diferenças de poucos ms são ruído.
+- **20 contas reutilizadas:** favorece o cache do token (é o padrão de uso logado, mas um teste com
+  milhares de usuários novos teria mais misses).
+
+Para medir a capacidade real: `BASE_URL=http://<elb> ./scripts/load-test.sh` a partir de outra máquina.
 
 ## Código
 

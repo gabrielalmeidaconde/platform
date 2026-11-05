@@ -60,5 +60,22 @@ Os testes do serviço provam o comportamento sem depender da API real (`tests/te
 | API fora do ar 11 min depois | `503` |
 
 Na plataforma rodando, a métrica `exchange_quote_cache_total{result="hit|miss|stale|error"}` mostra a
-taxa de acerto no Grafana ([Observabilidade](observability.md)), e o cenário `exchange` do
-[teste de carga](../devops/load-testing.md) compara `EXCHANGE_CACHE_TTL=30` com `EXCHANGE_CACHE_TTL=0`.
+taxa de acerto no Grafana ([Observabilidade](observability.md)).
+
+## Resultados
+
+Medidos em 05/11/2026 pelo [teste de carga](../devops/load-testing.md) (experimento 3: 10 usuários,
+30 s, `GET /exchange/USD/BRL` e `EUR/BRL` pelo `lb` → gateway → exchange, com a AwesomeAPI real):
+
+| `EXCHANGE_CACHE_TTL` | Requisições | p50 | p95 | p99 | Erros |
+|---|---:|---:|---:|---:|---:|
+| `0` (sem cache) | 445 | 23 ms | 49 ms | 69 ms | 0 % |
+| `30` (com cache) | 454 | **3 ms** | **4 ms** | 17 ms | 0 % |
+
+O p95 cai **92 %**: sem cache, a latência de toda cotação é a da API externa; com cache, só a primeira
+cotação de cada par a cada 30 s paga essa latência. O ganho maior não aparece na tabela: sem cache, a
+API externa recebeu ≈ 7 chamadas por segundo de só 10 usuários; com cache, recebe no máximo 2 por
+minuto por par e por réplica, independente da carga — longe do limite de requisições da API gratuita.
+
+Antes, rodando o serviço sozinho contra a API real: primeira consulta de `USD/BRL` em 60 ms (chamada
+externa), a seguinte em **1,5 ms** (cache).

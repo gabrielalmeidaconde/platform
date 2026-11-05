@@ -11,8 +11,9 @@ platform/
 │   ├── account-service/      #   Account (Spring Boot + PostgreSQL)
 │   ├── auth/                 #   interface Feign + DTOs do Auth
 │   ├── auth-service/         #   Auth (JWT)
+│   ├── exchange-service/     #   Exchange (Python/FastAPI, câmbio)
 │   └── gateway-service/      #   API gateway (Spring Cloud Gateway + Redis)
-├── compose.yaml              # plataforma local: db, redis, account, auth, gateway (N), lb
+├── compose.yaml              # plataforma local: db, redis, account, auth, exchange, gateway (N), lb
 ├── setup/nginx.conf          # balanceador na frente das réplicas do gateway
 ├── k8s/                      # infra compartilhada no EKS: lb (Nginx) e redis
 ├── scripts/                  # build.sh e smoke-test.sh

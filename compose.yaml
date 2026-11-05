@@ -96,16 +96,17 @@ services:
     depends_on:
       - gateway
 
-  # Exchange (Python, Gabriel). Entra com:
-  #   docker compose --profile exchange up -d --build
-  # quando o submódulo api/exchange-service existir.
+  # Exchange (Python/FastAPI). Cotação da AwesomeAPI com cache em memória
+  # (bottleneck: ver docs/bottlenecks/exchange-cache.md)
   exchange:
-    profiles: [ "exchange" ]
     build:
       context: ./api/exchange-service
       dockerfile: Dockerfile
+    environment:
+      CACHE_TTL: ${EXCHANGE_CACHE_TTL:-30}
+      EXCHANGE_API_TOKEN: ${EXCHANGE_API_TOKEN:-}
     deploy:
-      replicas: 1
+      replicas: ${EXCHANGE_REPLICAS:-1}
 
 volumes:
   db_data:

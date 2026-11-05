@@ -60,6 +60,23 @@ ok "GET /accounts com token -> 200"
 [ "$(status -H "$COOKIE" "$BASE_URL/accounts/$ID")" = "200" ] || fail "GET /accounts/{id}"
 ok "GET /accounts/{id} -> 200"
 
+[ "$(status "$BASE_URL/exchange/USD/BRL")" = "401" ] || fail "GET /exchange sem token deveria ser 401"
+ok "GET /exchange/USD/BRL sem token -> 401"
+
+# o exchange depende de uma API externa: 503 (fora do ar/limite) vira só aviso
+ex=$(curl -s -w '\n%{http_code}' -H "$COOKIE" "$BASE_URL/exchange/USD/BRL")
+code=$(echo "$ex" | tail -1); body=$(echo "$ex" | sed '$d')
+case "$code" in
+  200)
+    echo "$body" | grep -q '"sell"' && echo "$body" | grep -q '"buy"' || fail "GET /exchange/USD/BRL: $body"
+    echo "$body" | grep -q "\"id-account\":\"$ID\"" || fail "exchange não recebeu o id-account do gateway: $body"
+    ok "GET /exchange/USD/BRL -> 200 com sell/buy e o id-account do usuário" ;;
+  503) echo "aviso - exchange respondeu 503 (API de câmbio externa indisponível)" ;;
+  *) fail "GET /exchange/USD/BRL respondeu $code: $body" ;;
+esac
+[ "$(status -H "$COOKIE" "$BASE_URL/exchanges/USD/XX")" = "400" ] || fail "/exchanges/{from}/{to} (apelido) deveria chegar no exchange"
+ok "GET /exchanges/... (apelido) chega no exchange"
+
 hosts=$(for i in $(seq 1 12); do curl -s "$BASE_URL/health-check"; echo; done | sort -u | wc -l | tr -d ' ')
 if [ "$hosts" -ge 2 ]; then ok "balanceamento: $hosts réplicas diferentes do gateway responderam"
 else echo "aviso - só 1 réplica do gateway respondeu (GATEWAY_REPLICAS=1?)"; fi

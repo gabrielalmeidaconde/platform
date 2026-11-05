@@ -32,7 +32,10 @@ const PASSWORD = 'carga-senha-123';
 
 const PROFILES = {
   // 1 usuário, só para ver se o script e a plataforma funcionam
-  smoke: [{ duration: '20s', target: 1 }],
+  smoke: [
+    { duration: '1s', target: 1 },
+    { duration: '20s', target: 1 },
+  ],
   // carga esperada: sobe, mantém o platô, desce
   load: [
     { duration: '20s', target: VUS },
@@ -67,10 +70,12 @@ export const options = {
       gracefulRampDown: '10s',
     },
   },
-  // SLO do projeto (ver docs/devops/custos-sla.md): o k6 sai com código 99 se estourar
+  // SLO do projeto (ver docs/devops/custos-sla.md): o k6 sai com código 99 se estourar.
+  // Só conta a fase de teste (phase:test): o cadastro/login do setup() fica de fora.
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    'http_req_duration{expected_response:true}': ['p(95)<500', 'p(99)<1500'],
+    'http_req_failed{phase:test}': ['rate<0.01'],
+    'http_req_duration{phase:test,expected_response:true}': ['p(95)<500', 'p(99)<1500'],
+    'http_reqs{phase:test}': ['count>0'],
     checks: ['rate>0.99'],
   },
   summaryTrendStats: ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
@@ -80,10 +85,13 @@ export const options = {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-function login(email) {
+// tag "phase": separa o setup() (cadastro/login das contas) da carga medida
+const tags = (name, phase = 'test') => ({ name, phase });
+
+function login(email, phase = 'test') {
   const res = http.post(`${BASE_URL}/auth/login`, JSON.stringify({ email, password: PASSWORD }), {
     headers: JSON_HEADERS,
-    tags: { name: 'POST /auth/login' },
+    tags: tags('POST /auth/login', phase),
   });
   const cookie = res.cookies.__store_jwt_token;
   return cookie && cookie.length ? cookie[0].value : null;
@@ -99,16 +107,16 @@ export function setup() {
     const reg = http.post(
       `${BASE_URL}/auth/register`,
       JSON.stringify({ name: `Carga ${i}`, email, password: PASSWORD }),
-      { headers: JSON_HEADERS, tags: { name: 'setup' } },
+      { headers: JSON_HEADERS, tags: tags('setup', 'setup') },
     );
     if (reg.status !== 200 && reg.status !== 201) {
       exec.test.abort(`POST /auth/register respondeu ${reg.status}: ${reg.body}`);
     }
-    const token = login(email);
+    const token = login(email, 'setup');
     if (!token) exec.test.abort('login não devolveu o cookie __store_jwt_token');
     const me = http.get(`${BASE_URL}/auth/me`, {
       headers: { Cookie: `__store_jwt_token=${token}` },
-      tags: { name: 'setup' },
+      tags: tags('setup', 'setup'),
     });
     users.push({ email, token, id: me.json('id') });
   }
@@ -117,9 +125,9 @@ export function setup() {
 
 function authRead(user) {
   const params = { headers: { Cookie: `__store_jwt_token=${user.token}` } };
-  const me = http.get(`${BASE_URL}/auth/me`, Object.assign({ tags: { name: 'GET /auth/me' } }, params));
+  const me = http.get(`${BASE_URL}/auth/me`, Object.assign({ tags: tags('GET /auth/me') }, params));
   check(me, { 'auth/me 200': (r) => r.status === 200 });
-  const acc = http.get(`${BASE_URL}/accounts/${user.id}`, Object.assign({ tags: { name: 'GET /accounts/{id}' } }, params));
+  const acc = http.get(`${BASE_URL}/accounts/${user.id}`, Object.assign({ tags: tags('GET /accounts/{id}') }, params));
   check(acc, { 'accounts/{id} 200': (r) => r.status === 200 });
 }
 
@@ -127,7 +135,7 @@ function exchange(user) {
   const pair = Math.random() < 0.8 ? 'USD/BRL' : 'EUR/BRL';
   const res = http.get(`${BASE_URL}/exchange/${pair}`, {
     headers: { Cookie: `__store_jwt_token=${user.token}` },
-    tags: { name: 'GET /exchange/{from}/{to}' },
+    tags: tags('GET /exchange/{from}/{to}'),
   });
   check(res, {
     'exchange 200': (r) => r.status === 200,
@@ -166,13 +174,16 @@ export default function (data) {
 // scripts/load-matrix.sh juntar os resultados em load/results/RESULTS.md.
 export function handleSummary(data) {
   const m = data.metrics;
-  const d = m['http_req_duration{expected_response:true}'] || m.http_req_duration;
+  // só a fase de teste (submétricas criadas pelos thresholds com {phase:test})
+  const d = m['http_req_duration{phase:test,expected_response:true}'];
+  const reqs = m['http_reqs{phase:test}'];
+  const failed = m['http_req_failed{phase:test}'];
   const fmt = (v) => (v === undefined ? '-' : v.toFixed(0));
   const row =
     `| ${NAME} | ${SCENARIO} | ${PROFILE} | ${m.vus_max ? m.vus_max.values.max : '-'} ` +
-    `| ${m.http_reqs.values.count} | ${m.http_reqs.values.rate.toFixed(1)} ` +
+    `| ${reqs.values.count} | ${reqs.values.rate.toFixed(1)} ` +
     `| ${fmt(d.values.med)} | ${fmt(d.values['p(95)'])} | ${fmt(d.values['p(99)'])} ` +
-    `| ${(m.http_req_failed.values.rate * 100).toFixed(2)} % |\n`;
+    `| ${(failed.values.rate * 100).toFixed(2)} % |\n`;
   return {
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
     [`/results/${NAME}.json`]: JSON.stringify(data, null, 2),

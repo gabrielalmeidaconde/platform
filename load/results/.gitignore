@@ -1,0 +1,3 @@
+# JSONs completos do k6 ficam só local; o RESULTS.md (tabela) vai para o git
+*.json
+*.row.md

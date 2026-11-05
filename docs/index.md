@@ -64,7 +64,7 @@ Detalhes em [Arquitetura](arquitetura.md).
 | [AWS](devops/aws.md) | 5% | Nicolas | :material-check: pronto |
 | [EKS](devops/eks.md) | 10% | Nicolas | a fazer |
 | [CI/CD (GitHub Actions)](devops/ci-cd.md) | 10% | Leonardo | pipeline pronto; deploy aguarda o EKS |
-| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | a fazer |
+| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | scripts prontos; falta rodar e registrar os resultados |
 | [PaaS, custos e SLA](devops/custos-sla.md) | 10% | Gabriel | a fazer |
 | Documentação (MkDocs) | 10% | todos | em andamento |
 

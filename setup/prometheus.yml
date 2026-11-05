@@ -1,0 +1,33 @@
+# Bottleneck: observabilidade. Prometheus do compose local.
+#
+# O gateway e o exchange têm várias réplicas atrás do mesmo nome DNS. Com
+# static_configs ("gateway:8080") cada scrape cairia numa réplica aleatória e as
+# séries se misturariam; com dns_sd_configs o Prometheus resolve o nome para
+# TODOS os IPs e raspa cada réplica separada (label "instance" = IP da réplica).
+# "--scale gateway=N" entra sozinho em até 10 s.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  - job_name: gateway
+    metrics_path: /gateway/actuator/prometheus
+    dns_sd_configs:
+      - names: [ gateway ]
+        type: A
+        port: 8080
+        refresh_interval: 10s
+
+  - job_name: exchange
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: [ exchange ]
+        type: A
+        port: 8080
+        refresh_interval: 10s
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [ localhost:9090 ]

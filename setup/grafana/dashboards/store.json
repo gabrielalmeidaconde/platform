@@ -1,0 +1,152 @@
+{
+  "uid": "store-platform",
+  "title": "Store — plataforma",
+  "description": "Gateway, cache do token, exchange e teste de carga (k6). Versionado em setup/grafana/dashboards/store.json.",
+  "tags": ["store", "pna26"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    { "type": "row", "title": "Visão geral", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [] },
+    {
+      "id": 1, "type": "stat", "title": "Requisições/s (gateway)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{application=\"gateway\"}[1m]))" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Erros 5xx (gateway)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.001 }, { "color": "red", "value": 0.01 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{application=\"gateway\",status=~\"5..\"}[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"gateway\"}[1m])), 1e-9)" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Réplicas no ar",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [{ "refId": "A", "expr": "sum by (job) (up{job=~\"gateway|exchange\"})", "legendFormat": "{{job}}" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Cache do token: acerto",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(gateway_token_cache_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(gateway_token_cache_total[5m])), 1e-9)" }]
+    },
+
+    { "type": "row", "title": "Gateway", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "id": 101, "panels": [] },
+    {
+      "id": 5, "type": "timeseries", "title": "Requisições/s por status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(http_server_requests_seconds_count{application=\"gateway\"}[1m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Latência no gateway (média e máximo)",
+      "description": "O Spring Boot não publica buckets de histograma por padrão, então mostramos a média (sum/count) e o máximo da janela. Percentis do ponto de vista do cliente: painéis do k6.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_sum{application=\"gateway\"}[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"gateway\"}[1m])), 1e-9)", "legendFormat": "média" },
+        { "refId": "B", "expr": "max(http_server_requests_seconds_max{application=\"gateway\"})", "legendFormat": "máximo" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Requisições/s por réplica (balanceamento)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (instance) (rate(http_server_requests_seconds_count{application=\"gateway\"}[1m]))", "legendFormat": "{{instance}}" }]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Cache do token (Redis): hit / miss / error por segundo",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (result) (rate(gateway_token_cache_total[1m]))", "legendFormat": "{{result}}" }]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Heap da JVM por réplica",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (instance) (jvm_memory_used_bytes{application=\"gateway\",area=\"heap\"})", "legendFormat": "{{instance}}" }]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "CPU por réplica",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "process_cpu_usage{application=\"gateway\"}", "legendFormat": "{{instance}}" }]
+    },
+
+    { "type": "row", "title": "Exchange", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "id": 102, "panels": [] },
+    {
+      "id": 11, "type": "timeseries", "title": "Cotações/s por status",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(exchange_http_server_requests_seconds_count{route=\"/exchange/{from_}/{to}\"}[1m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Latência do exchange (p50 / p95 / p99)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(exchange_http_server_requests_seconds_bucket{route=\"/exchange/{from_}/{to}\"}[1m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(exchange_http_server_requests_seconds_bucket{route=\"/exchange/{from_}/{to}\"}[1m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(exchange_http_server_requests_seconds_bucket{route=\"/exchange/{from_}/{to}\"}[1m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Cache da cotação + chamadas à API externa",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (rate(exchange_quote_cache_total[1m]))", "legendFormat": "cache {{result}}" },
+        { "refId": "B", "expr": "sum by (outcome) (rate(exchange_upstream_request_seconds_count[1m]))", "legendFormat": "API externa {{outcome}}" }
+      ]
+    },
+
+    { "type": "row", "title": "Teste de carga (k6)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "id": 103, "panels": [] },
+    {
+      "id": 14, "type": "timeseries", "title": "Usuários virtuais e requisições/s (k6)",
+      "description": "Só aparece durante um ./scripts/load-test.sh (o k6 envia as métricas por remote write).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0 } }, "overrides": [ { "matcher": { "id": "byName", "options": "req/s" }, "properties": [ { "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "reqps" } ] } ] },
+      "targets": [
+        { "refId": "A", "expr": "sum(k6_vus)", "legendFormat": "VUs" },
+        { "refId": "B", "expr": "sum(rate(k6_http_reqs_total[30s]))", "legendFormat": "req/s" }
+      ]
+    },
+    {
+      "id": 15, "type": "timeseries", "title": "Latência vista pelo cliente (k6)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max by (scenario) (k6_http_req_duration_p95)", "legendFormat": "p95 {{scenario}}" },
+        { "refId": "B", "expr": "max by (scenario) (k6_http_req_duration_p99)", "legendFormat": "p99 {{scenario}}" }
+      ]
+    }
+  ]
+}

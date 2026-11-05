@@ -17,7 +17,9 @@ docker compose up -d --build  # sobe db, redis, account, auth, exchange, gateway
 ```
 
 A plataforma fica em [http://localhost:8080](http://localhost:8080){target="_blank"}. Só o `lb` (Nginx)
-publica porta; os demais serviços ficam na rede interna do compose.
+publica porta; os demais serviços ficam na rede interna do compose. O Grafana
+([http://localhost:3000](http://localhost:3000){target="_blank"}) e o Prometheus (`:9090`) ficam presos ao
+`127.0.0.1` — ver [Observabilidade](bottlenecks/observability.md).
 
 ``` { .yaml .copy title="compose.yaml" }
 --8<-- "compose.yaml"

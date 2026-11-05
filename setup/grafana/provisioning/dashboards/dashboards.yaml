@@ -1,0 +1,9 @@
+# Carrega os dashboards versionados em setup/grafana/dashboards/.
+apiVersion: 1
+providers:
+  - name: store
+    folder: Store
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

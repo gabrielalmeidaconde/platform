@@ -103,6 +103,17 @@ virando `503`, mesma moeda sem chamada externa, 50 requisições → 1 chamada e
 *stale-if-error*, 100 requisições simultâneas → 1 chamada). O [smoke test](../como-rodar.md#smoke-test)
 confere a rota de ponta a ponta pelo gateway, inclusive que o `id-account` que chega é o do usuário logado.
 
+Verificado em 05/11/2026: **21 testes passando**; serviço rodando contra a AwesomeAPI real (200 com
+`sell ≥ buy` para `USD/BRL` e `EUR/BRL`, 400, 401 e 404 corretos); smoke test completo na plataforma
+local (`GET /exchange/USD/BRL → 200` com o `id-account` do usuário). Desempenho no
+[teste de carga](../devops/load-testing.md) e em [Cache da cotação](../bottlenecks/exchange-cache.md#resultados).
+
+!!! note "API externa no CI"
+
+    No runner do GitHub Actions a AwesomeAPI respondeu com erro e o Exchange devolveu `503` (o smoke
+    test trata isso como aviso, não falha). Localmente a mesma chamada funciona. Se isso se repetir,
+    definir `EXCHANGE_API_TOKEN` (token gratuito da AwesomeAPI) como secret do workflow `integration`.
+
 ``` bash
 cd api/exchange-service
 pip install -r requirements.txt pytest && pytest -q

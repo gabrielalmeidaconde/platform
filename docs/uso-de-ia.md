@@ -67,8 +67,30 @@ partes, revisão) e o que foi feito sem._
 
 ## Gabriel
 
-_A preencher pelo Gabriel: Exchange, testes de carga, observabilidade e custos/SLA._
+**Ferramenta:** Claude Code (modelo Claude Opus 5.5, Anthropic), no VS Code, com acesso ao repositório
+local.
+
+**Como foi usado:** pedi para a IA olhar o projeto, achar as tarefas que eram minhas no
+[quadro](https://github.com/orgs/pna26/projects/1){target="_blank"} e na página inicial da documentação, e
+implementá-las com um commit por tarefa, seguindo os padrões que o grupo já usava (pipeline reutilizável,
+manifestos k8s do gateway, estilo da documentação).
 
 | Parte | Feito com IA? | Observações |
 |---|---|---|
-| | | |
+| Exchange (`pna26/exchange-service`) | Sim — código, testes, Dockerfile, k8s e CI | FastAPI + `httpx`; 21 testes com a API externa simulada. **Ainda não executados** (a máquina não tinha Python/Docker instalados na hora). |
+| Bottleneck: cache da cotação | Sim | TTL, lock contra *stampede* e *stale-if-error*; decisões em [Cache da cotação](bottlenecks/exchange-cache.md). |
+| Observabilidade (Prometheus + Grafana) | Sim | Configs do compose e do EKS, dashboard em JSON. **Ainda não testados** com a plataforma no ar. |
+| Testes de carga (k6) | Sim — scripts | Os **resultados** não foram gerados pela IA: a tabela fica vazia até rodarmos `./scripts/load-matrix.sh`. |
+| PaaS, custos e SLA | Sim — texto e contas | Preços de referência da AWS e dos PaaS; precisam ser conferidos na calculadora da AWS. |
+
+**Pendências antes de considerar pronto** (eu, sem IA): rodar `pytest` no exchange, subir a plataforma
+com `docker compose up -d --build`, rodar o `smoke-test.sh` e a bateria de carga, conferir o dashboard no
+Grafana, conferir os preços e criar o repositório `pna26/exchange-service` no GitHub.
+
+**O que eu (Gabriel) fiz sem IA:**
+
+- _A preencher pelo Gabriel._
+
+**Onde a IA errou e foi corrigido:**
+
+- _A preencher pelo Gabriel depois de rodar os testes e a plataforma._

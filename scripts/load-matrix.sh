@@ -10,6 +10,8 @@
 #                         sem cache cada requisição vai para a API externa e não queremos
 #                         martelar um serviço de terceiros)
 #   4. uso real           mixed, perfil load, configuração padrão
+#   5. saturação          GATEWAY_REPLICAS=1 x 4 com THINK=0 (usuários sem pausa): acha o
+#                         limite de vazão, que o experimento 2 (com pausa) não alcança
 #
 #   ONLY="1 3" ./scripts/load-matrix.sh     # roda só alguns experimentos
 set -uo pipefail
@@ -17,7 +19,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 OUT=load/results/RESULTS.md
-ONLY="${ONLY:-1 2 3 4}"
+ONLY="${ONLY:-1 2 3 4 5}"
 VUS="${VUS:-50}"
 
 want() { [[ " $ONLY " == *" $1 "* ]]; }
@@ -37,8 +39,8 @@ configure() {
   sleep 12
 }
 
-run() { # run NAME SCENARIO PROFILE VUS [DURATION]
-  NAME="$1" SCENARIO="$2" PROFILE="$3" VUS="$4" DURATION="${5:-1m}" ./scripts/load-test.sh || \
+run() { # run NAME SCENARIO PROFILE VUS [DURATION] [THINK]
+  NAME="$1" SCENARIO="$2" PROFILE="$3" VUS="$4" DURATION="${5:-1m}" THINK="${6:-}" ./scripts/load-test.sh || \
     echo "aviso - $1 estourou algum threshold (ver o resumo acima)"
 }
 
@@ -72,6 +74,13 @@ if want 4; then
   run mixed-load mixed load "$VUS"
 fi
 
+if want 5; then
+  for n in 1 4; do
+    configure TOKEN_CACHE_ENABLED=true GATEWAY_REPLICAS=$n EXCHANGE_CACHE_TTL=30
+    run "saturation-$n" auth stress 25 1m 0
+  done
+fi
+
 # volta para a configuração padrão
 configure "${DEFAULTS[@]}"
 
@@ -86,7 +95,7 @@ configure "${DEFAULTS[@]}"
   echo
   echo "| Execução | Cenário | Perfil | VUs máx. | Requisições | req/s | p50 | p95 | p99 | Erros |"
   echo "|---|---|---|---:|---:|---:|---:|---:|---:|---:|"
-  for n in token-cache-off token-cache-on replicas-1 replicas-2 replicas-4 exchange-cache-off exchange-cache-on mixed-load; do
+  for n in token-cache-off token-cache-on replicas-1 replicas-2 replicas-4 exchange-cache-off exchange-cache-on mixed-load saturation-1 saturation-4; do
     [ -f "load/results/$n.row.md" ] && row "$n"
   done
 } > "$OUT"

@@ -8,6 +8,8 @@
 //   DURATION  duração do platô                           (padrão: 1m)
 //   USERS     contas criadas no setup e reutilizadas     (padrão: 20)
 //   NAME      nome do resultado em load/results/          (padrão: SCENARIO-PROFILE)
+//   THINK     pausa entre ações, em s (padrão: 0.5-1.5 aleatório; 0 = sem pausa,
+//             para achar o limite de vazão)
 //
 // Cenários:
 //   auth      GET /auth/me + GET /accounts/{id}: rota protegida -> gateway valida o
@@ -28,6 +30,7 @@ const VUS = parseInt(__ENV.VUS || '50', 10);
 const DURATION = __ENV.DURATION || '1m';
 const USERS = parseInt(__ENV.USERS || '20', 10);
 const NAME = __ENV.NAME || `${SCENARIO}-${PROFILE}`;
+const THINK = __ENV.THINK;
 const PASSWORD = 'carga-senha-123';
 
 const PROFILES = {
@@ -167,7 +170,8 @@ export default function (data) {
     }
   }
   // "tempo de leitura" do usuário: sem isso cada VU vira um loop sem pausa
-  sleep(0.5 + Math.random());
+  if (THINK === undefined) sleep(0.5 + Math.random());
+  else if (parseFloat(THINK) > 0) sleep(parseFloat(THINK));
 }
 
 // Resumo no terminal + JSON completo + uma linha de tabela markdown, para o

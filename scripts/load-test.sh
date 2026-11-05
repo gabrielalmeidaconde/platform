@@ -27,6 +27,7 @@ ARGS=(run --rm -i
   -v "$ROOT/load/results:/results"
   -e SCENARIO="$SCENARIO" -e PROFILE="$PROFILE" -e NAME="$NAME"
   -e VUS="${VUS:-50}" -e DURATION="${DURATION:-1m}" -e USERS="${USERS:-20}")
+[ -n "${THINK:-}" ] && ARGS+=(-e THINK="$THINK")
 K6_ARGS=(run)
 
 if [ -z "${BASE_URL:-}" ]; then

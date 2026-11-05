@@ -50,7 +50,7 @@ Detalhes em [Arquitetura](arquitetura.md).
 | [pna26/auth-service](https://github.com/pna26/auth-service){target="_blank"} | Implementação do Auth (JWT) | Nicolas |
 | [pna26/account](https://github.com/pna26/account){target="_blank"} | Interface (Feign) e DTOs do Account | Nicolas |
 | [pna26/account-service](https://github.com/pna26/account-service){target="_blank"} | Implementação do Account (PostgreSQL + Flyway) | Nicolas |
-| exchange-service | Câmbio (Python) | Gabriel |
+| [pna26/exchange-service](https://github.com/pna26/exchange-service){target="_blank"} | Câmbio (Python/FastAPI) | Gabriel |
 
 ## Entregas
 
@@ -59,13 +59,13 @@ Detalhes em [Arquitetura](arquitetura.md).
 | [Gateway](servicos/gateway.md) | 5% | Leonardo | :material-check: pronto |
 | [Auth](servicos/auth.md) | 5% | Nicolas | :material-check: pronto |
 | [Account](servicos/account.md) | 5% | Nicolas | :material-check: pronto |
-| [Exchange](servicos/exchange.md) | 5% | Gabriel | a fazer |
+| [Exchange](servicos/exchange.md) | 5% | Gabriel | código pronto; falta publicar o repositório `pna26/exchange-service` |
 | [Bottlenecks](bottlenecks/index.md) | 20% | todos | em andamento |
 | [AWS](devops/aws.md) | 5% | Nicolas | :material-check: pronto |
 | [EKS](devops/eks.md) | 10% | Nicolas | a fazer |
 | [CI/CD (GitHub Actions)](devops/ci-cd.md) | 10% | Leonardo | pipeline pronto; deploy aguarda o EKS |
-| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | a fazer |
-| [PaaS, custos e SLA](devops/custos-sla.md) | 10% | Gabriel | a fazer |
+| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | :material-check: pronto |
+| [PaaS, custos e SLA](devops/custos-sla.md) | 10% | Gabriel | :material-check: pronto |
 | Documentação (MkDocs) | 10% | todos | em andamento |
 
 ## Apresentação

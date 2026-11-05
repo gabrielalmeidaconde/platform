@@ -1,10 +1,120 @@
 # Exchange
 
-!!! warning "A preencher — responsável: Gabriel"
+!!! info "Responsável: Gabriel — repositório [pna26/exchange-service](https://github.com/pna26/exchange-service){target="_blank"}"
 
-    Página criada na estrutura da documentação; o conteúdo é do item **Exchange (5%)** do
-    [quadro do projeto](https://github.com/orgs/pna26/projects/1){target="_blank"}.
+Microsserviço de **câmbio** em **Python (FastAPI)**. Recebe um par de moedas, busca a cotação numa API
+de terceiros e devolve o preço de compra e de venda para o usuário logado.
 
-Contrato: `GET /exchange/{from}/{to}` com o header `id-account` (o gateway também aceita `/exchanges/...`). O gateway encaminha para `http://exchange:8080` — o serviço precisa escutar na porta **8080** e se chamar `exchange` no compose/k8s (ou definir `EXCHANGE_URI` no gateway).
+``` mermaid
+flowchart LR
+    u([Usuário]) -->|"GET /exchange/USD/BRL<br/>cookie JWT"| lb[lb · Nginx] --> gw[gateway]
+    gw -->|"+ header id-account"| ex[exchange]
+    ex <-->|"hit (30 s)"| cache[(cache em memória)]
+    ex -->|"miss"| api([AwesomeAPI])
+```
 
-Para entrar no compose do `platform`: criar o repositório `pna26/exchange-service` com um `Dockerfile` e adicioná-lo como submódulo em `api/exchange-service` (`docker compose --profile exchange up`). O pipeline de CI/CD já suporta Python ([CI/CD](../devops/ci-cd.md)).
+## Contrato
+
+| Método | Rota | Entrada | Saída |
+|---|---|---|---|
+| GET | `/exchange/{from}/{to}` | header `id-account` (posto pelo gateway) | `{ sell, buy, date, id-account }` |
+
+O gateway também aceita `/exchanges/{from}/{to}` e reescreve para `/exchange/...`.
+
+``` bash
+curl -H "Cookie: __store_jwt_token=$TOKEN" localhost:8080/exchange/USD/BRL
+```
+
+``` json
+{ "sell": 5.3942, "buy": 5.3912, "date": "2026-11-05 10:00:00", "id-account": "8f1c..." }
+```
+
+| Status | Quando |
+|---|---|
+| 200 | cotação (do cache ou da API externa) |
+| 400 | moeda que não tem 3 letras (`/exchange/US/BRL`) |
+| 401 | sem token (barrado no gateway) ou sem `id-account` (não passou pelo gateway) |
+| 404 | par que a API externa não conhece |
+| 503 | API externa fora do ar **e** sem cotação recente em cache |
+
+## Decisões
+
+| Decisão | Motivo |
+|---|---|
+| FastAPI + `httpx` assíncrono | Enquanto espera a API externa, o processo atende outras requisições (o serviço é quase só I/O). |
+| AwesomeAPI (`economia.awesomeapi.com.br`) | Gratuita, sem cadastro, cobre BRL. `ask` → `sell` e `bid` → `buy` (por isso `sell ≥ buy`). Token opcional em `EXCHANGE_API_TOKEN` aumenta o limite. |
+| Cache da cotação por 30 s | É o bottleneck deste serviço: ver [Cache da cotação](../bottlenecks/exchange-cache.md). |
+| Mesma moeda (`BRL/BRL`) responde `1.0` sem chamar a API | Evita uma chamada externa inútil (a API devolveria 404). |
+| `401` sem `id-account` | O serviço só deve ser alcançado pelo gateway; sem o header, a requisição veio de outro lugar. |
+| 1 processo `uvicorn` por container | As métricas do `prometheus_client` ficam na memória do processo; com vários workers cada scrape veria um diferente. Escala com réplicas (`EXCHANGE_REPLICAS` / `replicas` no k8s). |
+| Porta 8080 e nome `exchange` | O gateway encaminha para `http://exchange:8080` no compose e no k8s. |
+| `/metrics` fora de `/exchange/**` | O gateway só encaminha `/exchange/**`, então as métricas ficam só na rede interna (o Prometheus raspa direto). |
+| Imagem `python:3.12-slim`, usuário 1001, FS somente leitura no k8s | Menos pacotes para o Trivy e mesmo padrão de segurança dos outros serviços. |
+
+## Configuração
+
+| Variável | Padrão | |
+|---|---|---|
+| `EXCHANGE_API_URL` | `https://economia.awesomeapi.com.br/json/last` | API externa |
+| `EXCHANGE_API_TOKEN` | — | token da AwesomeAPI (opcional) |
+| `CACHE_TTL` | `30` | segundos que uma cotação vale (`0` desliga o cache) |
+| `CACHE_STALE_TTL` | `600` | quanto tempo uma cotação velha ainda serve se a API cair |
+| `UPSTREAM_TIMEOUT` | `3` | timeout da chamada externa, em segundos |
+
+No compose, `EXCHANGE_CACHE_TTL` e `EXCHANGE_REPLICAS` (no `.env`) viram `CACHE_TTL` e o número de réplicas.
+
+## Código
+
+=== "app/main.py"
+
+    ``` { .python .copy linenums="1" }
+    --8<-- "api/exchange-service/app/main.py"
+    ```
+
+=== "app/provider.py"
+
+    ``` { .python .copy linenums="1" }
+    --8<-- "api/exchange-service/app/provider.py"
+    ```
+
+=== "app/cache.py"
+
+    ``` { .python .copy linenums="1" }
+    --8<-- "api/exchange-service/app/cache.py"
+    ```
+
+=== "Dockerfile"
+
+    ``` { .dockerfile .copy }
+    --8<-- "api/exchange-service/Dockerfile"
+    ```
+
+=== "k8s/k8s.yaml"
+
+    ``` { .yaml .copy }
+    --8<-- "api/exchange-service/k8s/k8s.yaml"
+    ```
+
+## Testes
+
+`pytest` com a API externa simulada (`httpx.MockTransport`), rodando no pipeline de CI
+([CI/CD](../devops/ci-cd.md)): contrato da resposta, `sell ≥ buy`, 400/401/404/503, `429` da API externa
+virando `503`, mesma moeda sem chamada externa, 50 requisições → 1 chamada externa, e o cache (TTL,
+*stale-if-error*, 100 requisições simultâneas → 1 chamada). O [smoke test](../como-rodar.md#smoke-test)
+confere a rota de ponta a ponta pelo gateway, inclusive que o `id-account` que chega é o do usuário logado.
+
+Verificado em 05/11/2026: **21 testes passando**; serviço rodando contra a AwesomeAPI real (200 com
+`sell ≥ buy` para `USD/BRL` e `EUR/BRL`, 400, 401 e 404 corretos); smoke test completo na plataforma
+local (`GET /exchange/USD/BRL → 200` com o `id-account` do usuário). Desempenho no
+[teste de carga](../devops/load-testing.md) e em [Cache da cotação](../bottlenecks/exchange-cache.md#resultados).
+
+!!! note "API externa no CI"
+
+    No runner do GitHub Actions a AwesomeAPI respondeu com erro e o Exchange devolveu `503` (o smoke
+    test trata isso como aviso, não falha). Localmente a mesma chamada funciona. Se isso se repetir,
+    definir `EXCHANGE_API_TOKEN` (token gratuito da AwesomeAPI) como secret do workflow `integration`.
+
+``` bash
+cd api/exchange-service
+pip install -r requirements.txt pytest && pytest -q
+```

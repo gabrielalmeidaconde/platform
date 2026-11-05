@@ -1,5 +1,6 @@
-# Infra compartilhada no EKS: balanceador (Nginx, Service LoadBalancer) e
-# Redis (cache). Os microsserviços fazem o próprio deploy pelo service.yaml.
+# Infra compartilhada no EKS: balanceador (Nginx, Service LoadBalancer),
+# Redis (cache) e observabilidade (Prometheus + Grafana). Os microsserviços
+# fazem o próprio deploy pelo service.yaml.
 # Só roda quando as variáveis/segredos da AWS estiverem configurados na org.
 
 name: infra
@@ -7,7 +8,7 @@ name: infra
 on:
   push:
     branches: [ main ]
-    paths: [ 'k8s/**', '.github/workflows/infra.yaml' ]
+    paths: [ 'k8s/**', 'setup/grafana/**', '.github/workflows/infra.yaml' ]
   workflow_dispatch:
 
 permissions:
@@ -40,9 +41,30 @@ jobs:
           aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
           kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 
+      - name: Grafana (dashboards e senha do admin)
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          # dashboards versionados em setup/grafana/dashboards (o mesmo JSON do compose)
+          kubectl create configmap grafana-dashboards -n "$NAMESPACE" \
+            --from-file=setup/grafana/dashboards/ --dry-run=client -o yaml | kubectl apply -f -
+          # senha: secret GRAFANA_ADMIN_PASSWORD da org; sem ele, gera uma aleatória
+          # só na primeira vez (kubectl get secret grafana-admin ... para ler)
+          if [ -n "$GRAFANA_ADMIN_PASSWORD" ]; then
+            kubectl create secret generic grafana-admin -n "$NAMESPACE" \
+              --from-literal=password="$GRAFANA_ADMIN_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+          elif ! kubectl get secret grafana-admin -n "$NAMESPACE" >/dev/null 2>&1; then
+            kubectl create secret generic grafana-admin -n "$NAMESPACE" \
+              --from-literal=password="$(openssl rand -base64 18)"
+          fi
+
       - name: apply
         run: |
           kubectl apply -n "$NAMESPACE" -f k8s/
           kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=180s
           kubectl rollout status deployment/lb -n "$NAMESPACE" --timeout=180s
+          kubectl rollout status deployment/prometheus -n "$NAMESPACE" --timeout=180s
+          # o Grafana não relê o ConfigMap de dashboards sozinho de forma confiável
+          kubectl rollout restart deployment/grafana -n "$NAMESPACE"
+          kubectl rollout status deployment/grafana -n "$NAMESPACE" --timeout=180s
           kubectl get svc lb -n "$NAMESPACE" -o wide

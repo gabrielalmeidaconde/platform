@@ -1,0 +1,11 @@
+# Data source criado na subida do Grafana (sem clicar na interface).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL}
+    isDefault: true
+    jsonData:
+      timeInterval: 5s

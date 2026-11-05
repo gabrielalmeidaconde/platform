@@ -12,12 +12,14 @@ git clone --recurse-submodules https://github.com/pna26/platform.git
 cd platform
 
 ./scripts/build.sh            # mvn install das interfaces + mvn package dos serviços + cria o .env
-docker compose up -d --build  # sobe db, redis, account, auth, gateway (2 réplicas) e lb
+docker compose up -d --build  # sobe db, redis, account, auth, exchange, gateway (2 réplicas) e lb
 ./scripts/smoke-test.sh       # teste ponta a ponta
 ```
 
 A plataforma fica em [http://localhost:8080](http://localhost:8080){target="_blank"}. Só o `lb` (Nginx)
-publica porta; os demais serviços ficam na rede interna do compose.
+publica porta; os demais serviços ficam na rede interna do compose. O Grafana
+([http://localhost:3000](http://localhost:3000){target="_blank"}) e o Prometheus (`:9090`) ficam presos ao
+`127.0.0.1` — ver [Observabilidade](bottlenecks/observability.md).
 
 ``` { .yaml .copy title="compose.yaml" }
 --8<-- "compose.yaml"
@@ -45,7 +47,7 @@ curl -H "Cookie: __store_jwt_token=$TOKEN" localhost:8080/accounts
 
 O `scripts/smoke-test.sh` é o mesmo que roda no CI (workflow `integration`). Ele confere:
 
-- cadastro, login (cookie `HttpOnly`), `/auth/me`, `/accounts` e logout;
+- cadastro, login (cookie `HttpOnly`), `/auth/me`, `/accounts`, `/exchange/USD/BRL` e logout;
 - `401` sem token, com token inválido e com `id-account` forjado;
 - que pelo menos 2 réplicas do gateway responderam (balanceamento);
 - que o token ficou em cache no Redis;
@@ -60,7 +62,7 @@ O `scripts/smoke-test.sh` é o mesmo que roda no CI (workflow `integration`). El
 ``` bash
 docker compose up -d --scale gateway=4      # mais réplicas (o Nginx descobre sozinho)
 TOKEN_CACHE_ENABLED=false docker compose up -d gateway   # desliga o cache (comparar no teste de carga)
-docker compose --profile exchange up -d --build          # inclui o exchange quando o submódulo existir
+docker compose up -d --scale exchange=3                  # mais réplicas do exchange
 docker compose down -v                                    # derruba tudo e apaga os volumes
 ```
 

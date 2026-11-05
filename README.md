@@ -11,11 +11,13 @@ platform/
 │   ├── account-service/      #   Account (Spring Boot + PostgreSQL)
 │   ├── auth/                 #   interface Feign + DTOs do Auth
 │   ├── auth-service/         #   Auth (JWT)
+│   ├── exchange-service/     #   Exchange (Python/FastAPI, câmbio)
 │   └── gateway-service/      #   API gateway (Spring Cloud Gateway + Redis)
-├── compose.yaml              # plataforma local: db, redis, account, auth, gateway (N), lb
-├── setup/nginx.conf          # balanceador na frente das réplicas do gateway
-├── k8s/                      # infra compartilhada no EKS: lb (Nginx) e redis
-├── scripts/                  # build.sh e smoke-test.sh
+├── compose.yaml              # plataforma local: db, redis, account, auth, exchange, gateway (N), lb
+├── setup/                    # nginx.conf (balanceador), prometheus.yml e grafana/ (dashboards)
+├── k8s/                      # infra compartilhada no EKS: lb (Nginx), redis, prometheus e grafana
+├── scripts/                  # build.sh, smoke-test.sh, load-test.sh e load-matrix.sh
+├── load/                     # teste de carga (k6) e resultados
 ├── .github/workflows/        # service.yaml (CI/CD reutilizável), integration, infra, docs
 ├── docs/ + mkdocs.yml        # documentação (MkDocs Material)
 ```

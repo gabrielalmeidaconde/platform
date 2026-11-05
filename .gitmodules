@@ -13,3 +13,6 @@
 [submodule "api/gateway-service"]
 	path = api/gateway-service
 	url = https://github.com/pna26/gateway-service.git
+[submodule "api/exchange-service"]
+	path = api/exchange-service
+	url = https://github.com/pna26/exchange-service.git

@@ -2,12 +2,17 @@
 
 !!! info "Responsável: Gabriel"
 
-!!! warning "Preços de referência"
+!!! note "Preços conferidos em 05/11/2026"
 
-    Valores **on-demand em `us-east-1`, em USD**, das páginas de preço da AWS e dos provedores PaaS,
-    usados para comparar ordens de grandeza (mês = 730 h). Preços mudam: conferir na
-    [AWS Pricing Calculator](https://calculator.aws/){target="_blank"} antes da entrega e atualizar a data
-    desta página. Impostos e o câmbio para BRL não estão incluídos.
+    Valores **on-demand em `us-east-1`, em USD** (mês = 730 h), usados para comparar ordens de grandeza.
+    Conferidos em 05/11/2026 contra as páginas de preço do
+    [EKS](https://aws.amazon.com/eks/pricing/){target="_blank"},
+    [Fargate](https://aws.amazon.com/fargate/pricing/){target="_blank"} e
+    [Classic Load Balancer](https://aws.amazon.com/elasticloadbalancing/classicloadbalancer/pricing){target="_blank"}
+    e com calculadoras de terceiros para o EC2 (`t3.medium` US$ 0,0416/h) e o IPv4 público
+    (US$ 0,005/h). Preços mudam: para um orçamento real, usar a
+    [AWS Pricing Calculator](https://calculator.aws/){target="_blank"}. Impostos e câmbio para BRL não
+    estão incluídos.
 
 ## O que precisa rodar
 
@@ -40,6 +45,13 @@ em zonas diferentes é o mínimo para não ter um ponto único de falha.
 | PostgreSQL no RDS `db.t4g.micro` single-AZ + 20 GB | US$ 0,016/h + 20 × US$ 0,115 | ≈ 14,00 |
 | Saída de dados | primeiros 100 GB/mês gratuitos | 0,00 |
 | **Total** | | **≈ 184** |
+
+!!! danger "Versão do Kubernetes: armadilha de 6×"
+
+    Os US$ 0,10/h do control plane valem só enquanto a versão do Kubernetes do cluster está no
+    **suporte padrão** (≈ 14 meses após o lançamento da versão no EKS). Depois disso o cluster entra
+    sozinho no **suporte estendido**: **US$ 0,60/h ≈ US$ 438/mês**, só de control plane. Criar o cluster
+    na versão mais recente disponível e não deixar um cluster esquecido ligado.
 
 Se os nós ficarem em sub-redes privadas, soma um **NAT Gateway** (US$ 0,045/h + US$ 0,045/GB ≈
 US$ 33+/mês) — é o item "escondido" mais caro em projetos pequenos. Para o projeto, nós em sub-rede

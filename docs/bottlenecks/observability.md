@@ -83,6 +83,21 @@ cada par de moedas criaria uma série nova no Prometheus (explosão de cardinali
 
 Para ver o dashboard se mexer, rode um [teste de carga](../devops/load-testing.md) em outro terminal.
 
+## Resultado: o que a observabilidade mostrou
+
+Verificado em 05/11/2026 com a plataforma local no ar: o Prometheus descobriu sozinho as 2 réplicas
+do gateway e o exchange (`/targets`, todos `up`), o Grafana subiu com o data source e o dashboard já
+provisionados, e todas as consultas do dashboard retornam dados.
+
+Durante o [teste de carga](../devops/load-testing.md) foi a observabilidade que **explicou** os números
+que o k6 só mostrava de fora:
+
+| Pergunta | Onde a resposta apareceu |
+|---|---|
+| O cache do token está mesmo poupando o Auth? | `gateway_token_cache_total`: **7.571 hits × 21 misses** na rodada com cache (99,7 %). |
+| Por que 4 réplicas renderam *menos* que 1 na saturação? | CPU da máquina (`system_cpu_usage`) em ≈ 83–85 % nas duas rodadas: as réplicas disputavam os mesmos núcleos. |
+| De onde vieram os 0,57 % de erro na saturação? | `http_server_requests_seconds_count{status="500"}` no gateway (≈ 3.500) → logs do Auth: `BindException` ao chamar o Account (Feign sem pool de conexões). |
+
 !!! tip "Sugestão para o gateway (Leonardo)"
 
     Ligar `spring.cloud.gateway.server.webflux.metrics.enabled=true` no gateway publicaria

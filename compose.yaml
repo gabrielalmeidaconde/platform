@@ -4,7 +4,8 @@
 #
 # Só o lb (Nginx) publica porta para fora: gateway, auth, account, exchange,
 # redis e db ficam na rede interna do compose (camada confiável). Prometheus
-# (9090) e Grafana (3000) ficam presos ao 127.0.0.1 da máquina.
+# (9090), Grafana (3000), Kafka UI (8089) e Mailpit (8025) ficam presos ao
+# 127.0.0.1 da máquina.
 
 name: store
 
@@ -47,11 +48,14 @@ services:
       DATABASE_DB: ${DB_NAME:-store}
       DATABASE_USERNAME: ${DB_USER:-store}
       DATABASE_PASSWORD: ${DB_PASSWORD:-store}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     deploy:
       replicas: 1
     depends_on:
       db:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
   auth:
     build:
@@ -109,6 +113,96 @@ services:
     deploy:
       replicas: ${EXCHANGE_REPLICAS:-1}
 
+  # Bottleneck: mensageria (docs/bottlenecks/messaging.md), como no Hands-on 7.
+  # O account grava a conta e o evento AccountCreated na mesma transação
+  # (outbox) e um relay publica no tópico account-events; o notification
+  # consome, deduplica pelo eventId e manda o e-mail de boas-vindas ao Mailpit.
+  # Kafka 4 de um nó em modo KRaft (broker e controlador no mesmo processo).
+  # Só a rede interna do compose fala com ele (sem porta publicada).
+  kafka:
+    image: apache/kafka:4.3.1
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # tópicos criados explicitamente pelo kafka-init (o automático teria 1 partição)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1" ]
+      interval: 10s
+      timeout: 10s
+      start_period: 60s
+      retries: 20
+
+  # tarefa única: cria os tópicos e termina. A DLT tem as mesmas 6 partições
+  # (o Spring publica a mensagem que falhou no mesmo número de partição)
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists           --topic account-events --partitions 6 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists           --topic account-events-dlt --partitions 6 --replication-factor 1
+    restart: "no"
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    environment:
+      KAFKA_CLUSTERS_0_NAME: store
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:${KAFKA_UI_PORT:-8089}:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # provedor de e-mail falso (SMTP 1025 na rede interna, caixa de entrada web)
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+
+  notification:
+    build:
+      context: ./api/notification-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_DB: ${DB_NAME:-store}
+      DATABASE_USERNAME: ${DB_USER:-store}
+      DATABASE_PASSWORD: ${DB_PASSWORD:-store}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MAIL_HOST: mailpit
+      NOTIFY_CONCURRENCY: ${NOTIFY_CONCURRENCY:-3}   # threads consumidoras (no máximo 6 úteis: 6 partições)
+      EMAIL_LATENCY: ${EMAIL_LATENCY:-50ms}          # latência simulada do provedor de e-mail
+      NOTIFY_IDEMPOTENT: ${NOTIFY_IDEMPOTENT:-true}  # false = sem deduplicação (para ver duplicatas)
+    deploy:
+      replicas: 1
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
+
   # Bottleneck: observabilidade (docs/bottlenecks/observability.md).
   # Portas só no 127.0.0.1 do host: ferramentas de operação, não da loja.
   prometheus:
@@ -146,6 +240,7 @@ services:
 
 volumes:
   db_data:
+  kafka_data:
   redis_data:
   prometheus_data:
   grafana_data:

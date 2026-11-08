@@ -58,12 +58,37 @@ abaixo.
 
 ## Nicolas
 
-_A preencher pelo Nicolas: Auth, Account, AWS, EKS e mensageria — o que foi feito com IA (ferramenta,
-partes, revisão) e o que foi feito sem._
+_A preencher pelo Nicolas: Auth, Account, AWS e EKS — o que foi feito com IA (ferramenta, partes,
+revisão) e o que foi feito sem._
+
+**Ferramenta:** Claude Code (modelo Claude Opus 5.5, Anthropic), no app desktop, com acesso ao clone local
+do `platform` e ao GitHub da organização.
 
 | Parte | Feito com IA? | Observações |
 |---|---|---|
-| | | |
+| Bottleneck: mensageria (Kafka) | Sim — código, compose, manifestos k8s, script de teste e esta página | Adaptado do Hands-on 7 do curso (outbox, consumidor idempotente, DLT), trocando pedidos por contas. Testado no compose local com `scripts/messaging-test.sh` (5 experimentos, todos passando). Os manifestos k8s foram testados só como containers com as mesmas restrições; **no EKS ainda não** (cluster apagado). |
+| `notification-service` (repositório novo) | Sim | Consumidor Spring Kafka copiado do padrão do Hands-on 7 e dos repositórios do grupo (Dockerfile, CI, k8s). |
+| Outbox no `account-service` | Sim | Tabela `accounts.outbox` (Flyway), `Outbox`, `OutboxRelay` e o `@Transactional` no `create`. |
+
+**O que eu (Nicolas) decidi na mensageria:**
+
+- O caso de uso: e-mail de boas-vindas quando uma conta é criada.
+- O consumidor num **serviço separado** (`notification-service`) em vez de dentro do `account`, para ser
+  desacoplamento de verdade (dois processos, um pode cair sem afetar o outro).
+- Seguir o material do professor (Hands-on 7, Kafka) em vez do RabbitMQ que estava no plano inicial.
+- Regra de segurança para a IA: nenhum segredo no Git ou em logs (o `.env` com o JWT local é gerado e fica
+  fora do Git; as credenciais do RDS ficam só no Secret do cluster).
+
+**Onde a IA errou e foi corrigido (mensageria):**
+
+- O plano inicial era RabbitMQ; ao reler o material do curso, a IA trocou para Kafka, que é o que o
+  Hands-on 7 usa, para seguir o mesmo padrão.
+- Usou `saveAndFlush`, que não existe no `CrudRepository` do account: o build pegou e virou `save` (a
+  transação continua garantindo que conta e evento entram juntos).
+- O script de teste falhou no Git Bash do Windows: o `docker compose exec kafka /opt/kafka/...` virava um
+  caminho `C:/Program Files/Git/opt/...`. Corrigido com `MSYS_NO_PATHCONV=1`.
+- Não conseguiu testar os manifestos num Kubernetes (o do Docker Desktop estava desligado); rodou os
+  containers com as mesmas restrições de segurança para provar que sobem, e isso está dito na página.
 
 ## Gabriel
 

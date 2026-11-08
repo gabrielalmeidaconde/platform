@@ -20,7 +20,7 @@ for lib in account auth; do
   (cd "api/$lib" && mvn "${MVN_ARGS[@]}" install)
 done
 
-for svc in account-service auth-service gateway-service; do
+for svc in account-service auth-service gateway-service notification-service; do
   echo ">> mvn package  api/$svc"
   (cd "api/$svc" && mvn "${MVN_ARGS[@]}" clean package)
 done

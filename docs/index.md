@@ -32,6 +32,7 @@ flowchart LR
         gw <-->|token → id| redis[(Redis)]
         auth --> account
         account --> db[(PostgreSQL)]
+        account -.->|evento| kafka[[Kafka]] -.-> notification
     end
     exchange --> api3([API de câmbio])
     e0@{ animate: true }
@@ -51,20 +52,21 @@ Detalhes em [Arquitetura](arquitetura.md).
 | [pna26/account](https://github.com/pna26/account){target="_blank"} | Interface (Feign) e DTOs do Account | Nicolas |
 | [pna26/account-service](https://github.com/pna26/account-service){target="_blank"} | Implementação do Account (PostgreSQL + Flyway) | Nicolas |
 | [pna26/exchange-service](https://github.com/pna26/exchange-service){target="_blank"} | Câmbio (Python/FastAPI) | Gabriel |
+| [pna26/notification-service](https://github.com/pna26/notification-service){target="_blank"} | Consumidor Kafka: e-mail de boas-vindas (mensageria) | Nicolas |
 
 ## Entregas
 
 | Tarefa | Peso | Responsável | Status |
 |---|---:|---|---|
 | [Gateway](servicos/gateway.md) | 5% | Leonardo | :material-check: pronto |
-| [Auth](servicos/auth.md) | 5% | Nicolas | :material-check: pronto |
-| [Account](servicos/account.md) | 5% | Nicolas | :material-check: pronto |
-| [Exchange](servicos/exchange.md) | 5% | Gabriel | código pronto; falta publicar o repositório `pna26/exchange-service` |
-| [Bottlenecks](bottlenecks/index.md) | 20% | todos | em andamento |
-| [AWS](devops/aws.md) | 5% | Nicolas | :material-check: pronto |
-| [EKS](devops/eks.md) | 10% | Nicolas | a fazer |
-| [CI/CD (GitHub Actions)](devops/ci-cd.md) | 10% | Leonardo | pipeline pronto; deploy aguarda o EKS |
-| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | :material-check: pronto |
+| [Auth](servicos/auth.md) | 5% | Nicolas | código pronto; página em andamento |
+| [Account](servicos/account.md) | 5% | Nicolas | código pronto; página em andamento |
+| [Exchange](servicos/exchange.md) | 5% | Gabriel | :material-check: pronto |
+| [Bottlenecks](bottlenecks/index.md) | 20% | todos | 6 implementados e verificados no compose/CI; falta a verificação no EKS |
+| [AWS](devops/aws.md) | 5% | Nicolas | conta e role OIDC do CI configuradas; página em andamento |
+| [EKS](devops/eks.md) | 10% | Nicolas | cluster testado em 08/11 (deploy manual + smoke test); falta o deploy pelo CI |
+| [CI/CD (GitHub Actions)](devops/ci-cd.md) | 10% | Leonardo | pipeline pronto em todos os repositórios; deploy no EKS via OIDC aguarda o cluster |
+| [Testes de carga](devops/load-testing.md) | 15% | Gabriel | feito no compose; falta a rodada no EKS com HPA |
 | [PaaS, custos e SLA](devops/custos-sla.md) | 10% | Gabriel | :material-check: pronto |
 | Documentação (MkDocs) | 10% | todos | em andamento |
 

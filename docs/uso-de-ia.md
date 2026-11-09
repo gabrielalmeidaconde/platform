@@ -29,6 +29,9 @@ abaixo.
 | `compose.yaml`, scripts e manifestos k8s do `platform` | Sim | Manifestos validados com Trivy e `nginx -t`; **ainda não testados num cluster** (o EKS não estava pronto). |
 | Esta documentação (estrutura e textos das minhas partes) | Sim | Baseada no template do professor. |
 | Medições (balanceamento, cache) | Executadas pela IA na minha máquina | Os números são os que saíram dos comandos mostrados nas páginas. |
+| AWS no pipeline via OIDC (`service.yaml`, `infra.yaml`, [CI/CD](devops/ci-cd.md)) | Sim — a partir da proposta do Nicolas (role `github-actions-pna26`) | Validado com `actionlint`. Na revisão com a IA apareceram três pontos que não estavam no plano: a ordem do merge (o workflow reutilizável não pode pedir mais permissão que quem o chama), os repositórios `account`, `auth` e `notification-service` também precisarem de `id-token: write`, e a `AmazonEKSEditPolicy` não deixar o `infra` criar o `Role`/`RoleBinding` do Prometheus. |
+| Revisão dos PRs do Nicolas (EKS e mensageria) | Sim — leitura dos diffs com a IA | A decisão de mergear e os comentários de revisão são meus. |
+| HTTPS na [Arquitetura](arquitetura.md), status da Home e rascunho da [Apresentação](apresentacao.md) | Sim | Montados a partir do código (cookie do Auth), do enunciado do curso e do estado dos repositórios. |
 
 **O que eu (Leonardo) fiz sem IA:**
 

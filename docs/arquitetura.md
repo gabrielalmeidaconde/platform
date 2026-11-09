@@ -17,6 +17,9 @@ flowchart LR
         gw1 & gw2 -->|"/exchange/**"| exchange
         auth -->|Feign| account
         account --> db[("PostgreSQL")]
+        account -.->|"AccountCreated (outbox)"| kafka[["Kafka"]]:::red
+        kafka -.-> notification
+        notification -.->|SMTP| mailpit(["Mailpit"])
     end
     exchange --> ext([API de câmbio externa])
     e0@{ animate: true }
@@ -34,7 +37,10 @@ flowchart LR
 | `auth` | Spring Boot + JJWT | Login, emissão e validação do JWT. |
 | `account` | Spring Boot + JPA + Flyway | Cadastro e dados das contas. |
 | `exchange` | Python | Cotação entre moedas (API de terceiros). |
-| `db` | PostgreSQL 17 | Banco do Account (schema `accounts`). |
+| `db` | PostgreSQL 17 | Banco do Account (schema `accounts`) e do Notification (schema `notification`). |
+| `kafka` | Apache Kafka 4 (KRaft) | Mensageria: tópico `account-events` (ver [Mensageria](bottlenecks/messaging.md)). |
+| `notification` | Spring Boot + Spring Kafka | Consome `AccountCreated` e envia o e-mail de boas-vindas (idempotente, com DLT). |
+| `mailpit` | Mailpit | Servidor SMTP falso com caixa de entrada web (só local/cluster). |
 
 ## Fluxo de uma requisição autenticada
 

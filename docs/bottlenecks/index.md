@@ -10,4 +10,4 @@ integrante).
 | [Varredura de vulnerabilidades](vulnerability-scanning.md) | Dependências, imagens e manifestos com falhas conhecidas | Trivy (SCA, imagem, segredos, IaC) no pipeline + OWASP ZAP (DAST) | Leonardo | pronto |
 | [Cache da cotação](exchange-cache.md) | Toda cotação chamava a API externa (latência de terceiros, limite de requisições) | Cache em memória por par: TTL 30 s, lock contra *stampede*, *stale-if-error* | Gabriel | pronto |
 | [Observabilidade](observability.md) | Sem visibilidade do comportamento sob carga | Prometheus (descoberta de todas as réplicas) + Grafana com dashboard versionado, no compose e no EKS | Gabriel | pronto |
-| [Mensageria](messaging.md) | Acoplamento síncrono entre serviços | Kafka/RabbitMQ (ex.: evento de conta criada) | Nicolas | a fazer |
+| [Mensageria](messaging.md) | E-mail de boas-vindas no caminho do cadastro: latência e queda do provedor viram latência e queda do cadastro | Kafka: o account publica `AccountCreated` (transactional outbox) e o notification-service consome de forma idempotente, com retries e DLT | Nicolas | pronto (compose); EKS com manifestos prontos |

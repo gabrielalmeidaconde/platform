@@ -1,0 +1,73 @@
+# Mensageria: provedor de e-mail falso para o notification (SMTP 1025). A caixa
+# de entrada web (8025) não é exposta para fora do cluster; para ver os e-mails:
+#   kubectl port-forward -n store svc/mailpit 8025:8025   ->  http://localhost:8025
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels:
+    app: mailpit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailpit
+  template:
+    metadata:
+      labels:
+        app: mailpit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.31
+          ports:
+            - containerPort: 1025
+              name: smtp
+            - containerPort: 8025
+              name: web
+          readinessProbe:
+            tcpSocket:
+              port: 1025
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ "ALL" ]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+spec:
+  type: ClusterIP
+  selector:
+    app: mailpit
+  ports:
+    - name: smtp
+      protocol: TCP
+      port: 1025
+      targetPort: 1025
+    - name: web
+      protocol: TCP
+      port: 8025
+      targetPort: 8025

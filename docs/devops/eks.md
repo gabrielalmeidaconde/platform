@@ -97,23 +97,27 @@ da organização `EKS_CLUSTER` está definida: `aws eks update-kubeconfig` → t
 commit → `kubectl apply -n store -f k8s/` → `kubectl rollout status`.
 
 O GitHub Actions entra na AWS pela role OIDC `github-actions-pna26` (ver [AWS](aws.md)). Dentro do
-cluster, ela tem uma **access entry** com a access policy `AmazonEKSEditPolicy` **limitada ao
-namespace `store`**: pode criar e atualizar Deployments, Services e ConfigMaps ali, e nada fora dele.
+cluster, ela tem uma **access entry** com a access policy `AmazonEKSAdminPolicy` **limitada ao
+namespace `store`**: pode criar e atualizar Deployments, Services, ConfigMaps, Secrets e também
+`Role`/`RoleBinding` ali, e nada fora dele. A `AmazonEKSEditPolicy` não basta: ela segue o papel
+`edit` do Kubernetes, que não deixa mexer em roles, e o workflow `infra` aplica o `Role`/`RoleBinding`
+do Prometheus. Como o acesso é só ao namespace, o `store` é criado à mão (`kubectl create namespace
+store`, no passo 1 abaixo).
 
 ``` bash
 aws eks create-access-entry --cluster-name eks-store --region us-east-2 \
   --principal-arn arn:aws:iam::637423273088:role/github-actions-pna26
 aws eks associate-access-policy --cluster-name eks-store --region us-east-2 \
   --principal-arn arn:aws:iam::637423273088:role/github-actions-pna26 \
-  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy \
   --access-scope type=namespace,namespaces=store
 ```
 
-!!! warning "Situação em 08/11/2026"
+!!! warning "Situação"
 
-    O primeiro deploy foi feito à mão (mesmos passos do pipeline). O deploy automático depende de o
-    `service.yaml` autenticar pela role OIDC (`vars.AWS_ROLE_ARN` + `id-token: write`) em vez das
-    chaves fixas; só depois disso a variável `EKS_CLUSTER=eks-store` é criada na organização.
+    O primeiro deploy (08/11/2026) foi feito à mão, com os mesmos passos do pipeline. O `service.yaml`
+    já autentica pela role OIDC (`vars.AWS_ROLE_ARN` + `id-token: write`); o deploy automático liga
+    quando a variável `EKS_CLUSTER=eks-store` é criada na organização, com o cluster no ar.
 
 ## Ciclo de vida do ambiente
 

@@ -156,6 +156,73 @@ ocupada (CPU em ≈ 83 % nas duas rodadas, 4 JVMs disputando os mesmos núcleos)
 
 Para medir a capacidade real: `BASE_URL=http://<elb> ./scripts/load-test.sh` a partir de outra máquina.
 
+## Teste no EKS com HPA
+
+O curso pede um **vídeo do teste de carga em execução com o HPA escalando**. Roteiro para o dia do EKS:
+k6 rodando da máquina de um integrante contra o ELB, e o **Horizontal Pod Autoscaler** criando réplicas
+do gateway quando a CPU média passa de 50 % do `request` (250m → 125m por pod).
+
+!!! warning "Antes de começar"
+
+    - **metrics-server** instalado no cluster (o EKS não traz; sem ele o HPA fica em `<unknown>`).
+    - **Cenário `auth` (ou `mixed`), não `exchange`:** a AwesomeAPI devolveu `429` para o IP da AWS, então
+      o Exchange responde `503` no EKS.
+    - **Ninguém faz push na `main` durante a gravação:** o deploy do CI faz `kubectl apply` do manifesto
+      do gateway (`replicas: 2`) e briga com o HPA.
+    - **Capacidade:** os 2 nós fixos têm espaço para **mais ≈ 6 réplicas do gateway** (conta em
+      [Custos](custos-sla.md#o-que-precisa-rodar)). Com `--max=10`, as réplicas 9 e 10 ficariam *Pending*.
+      Por isso o roteiro usa `--max=6`; se o grupo preferir mostrar o limite, `--max=10` e os *Pending*
+      viram parte do resultado.
+
+**Três terminais lado a lado** (no Windows não existe `watch`; o `-w` do `kubectl` faz o mesmo):
+
+=== "1 · HPA"
+
+    ``` bash
+    kubectl autoscale deployment gateway --cpu-percent=50 --min=2 --max=6 -n store
+    kubectl get hpa gateway -n store -w
+    ```
+
+=== "2 · Pods do gateway"
+
+    ``` bash
+    kubectl get pods -n store -l app=gateway -o wide -w
+    ```
+
+=== "3 · k6"
+
+    ``` bash
+    ELB=$(kubectl get svc lb -n store -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    # (opcional) métricas do k6 no Grafana do cluster: noutro terminal,
+    #   kubectl port-forward svc/prometheus 9090 -n store
+    BASE_URL=http://$ELB PROMETHEUS_RW_URL=http://host.docker.internal:9090 \
+      NAME=eks-hpa SCENARIO=auth PROFILE=load VUS=100 DURATION=4m THINK=0 ./scripts/load-test.sh
+    ```
+
+`--min=2` porque o manifesto do gateway já sobe 2 réplicas: com `--min=1` o HPA derrubaria uma logo no
+começo do vídeo. O HPA olha a CPU a cada 15 s e o metrics-server tem até ≈ 1 min de atraso, por isso o
+platô tem 4 min. Depois do teste, o HPA espera **5 min** sem carga antes de reduzir as réplicas: dá
+para continuar gravando e mostrar a volta para 2.
+
+**Print do Grafana durante o teste** (página de [Observabilidade](../bottlenecks/observability.md)):
+`kubectl port-forward svc/grafana 3000 -n store`, dashboard *Store — plataforma*. Os painéis
+"Requisições/s por réplica" e "CPU por réplica" mostram as réplicas novas entrando e dividindo a carga.
+
+**Depois:** apagar o HPA (`kubectl delete hpa gateway -n store`) antes de apagar o cluster.
+
+### Resultado no EKS
+
+!!! warning "A medir no dia do EKS"
+
+    Preencher com o resumo do k6 (`load/results/eks-hpa.row.md`), o número máximo de réplicas que o HPA
+    criou, quanto tempo levou para escalar, e o link do vídeo. **Não preencher com números estimados.**
+
+| Execução | VUs | Requisições | req/s | p50 (ms) | p95 (ms) | p99 (ms) | Erros | Réplicas (início → máx.) |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| eks-hpa | | | | | | | | 2 → |
+
+<!-- vídeo do HPA: <iframe width="100%" height="470" src="https://www.youtube.com/embed/<id>" allowfullscreen></iframe> -->
+
 ## Código
 
 === "load/store.js"

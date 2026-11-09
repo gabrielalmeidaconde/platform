@@ -1,7 +1,8 @@
 # Infra compartilhada no EKS: balanceador (Nginx, Service LoadBalancer),
 # Redis (cache) e observabilidade (Prometheus + Grafana). Os microsserviços
 # fazem o próprio deploy pelo service.yaml.
-# Só roda quando as variáveis/segredos da AWS estiverem configurados na org.
+# Só roda quando a org tiver EKS_CLUSTER; a AWS é acessada via OIDC assumindo
+# a role vars.AWS_ROLE_ARN (sem chave de acesso guardada no GitHub).
 
 name: infra
 
@@ -13,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -29,9 +31,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: kubeconfig

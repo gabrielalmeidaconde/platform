@@ -6,8 +6,12 @@
 #   1. build + testes          (mvn verify | pytest)
 #   2. Trivy no código         (dependências, segredos e misconfig de Dockerfile/k8s)
 #   3. build da imagem + Trivy na imagem (SO + jar/libs)
-#   4. push multi-arch         (GHCR sempre; ECR quando houver credenciais da AWS)
+#   4. push multi-arch         (GHCR sempre; ECR quando a org tiver AWS_ROLE_ARN)
 #   5. deploy no EKS           (kubectl apply do k8s/ do repo + rollout)
+#
+# A AWS é acessada via OIDC: o job assume a role vars.AWS_ROLE_ARN, sem chave
+# de acesso guardada no GitHub. Por isso o ci.yaml de quem chama precisa dar
+# "id-token: write" (o reutilizável não pode ter mais permissão que quem chama).
 #
 # 4 e 5 só rodam em push na main. O pipeline falha se o Trivy achar
 # vulnerabilidade CRITICAL com correção disponível ou um segredo no código.
@@ -47,13 +51,6 @@ on:
         description: 'Falhar o pipeline com CVE CRITICAL corrigível ou segredo exposto'
         type: boolean
         default: true
-    secrets:
-      AWS_ACCESS_KEY_ID:
-        required: false
-      AWS_SECRET_ACCESS_KEY:
-        required: false
-      AWS_SESSION_TOKEN:
-        required: false
     outputs:
       image:
         description: 'Imagem publicada (registry/nome:sha-xxxxxxx)'
@@ -75,12 +72,13 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      id-token: write
     outputs:
       image: ${{ steps.publish.outputs.image }}
     env:
       IMAGE_NAME: ${{ inputs.image }}
       PUBLISH: ${{ inputs.image != '' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && inputs.aws-region != '' }}
+      HAS_AWS: ${{ vars.AWS_ROLE_ARN != '' && inputs.aws-region != '' }}
     steps:
 
       - uses: actions/checkout@v7
@@ -256,18 +254,20 @@ jobs:
         if: env.PUBLISH == 'true' && env.HAS_AWS == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Login no ECR (e cria o repositório se faltar)
         if: env.PUBLISH == 'true' && env.HAS_AWS == 'true'
         id: ecr
         run: |
-          aws ecr describe-repositories --repository-names "$IMAGE_NAME" >/dev/null 2>&1 || \
+          # a role do CI pode ter só push/pull (sem Describe/CreateRepository):
+          # nesse caso o repositório tem que existir e o push segue normalmente
+          if ! aws ecr describe-repositories --repository-names "$IMAGE_NAME" >/dev/null 2>&1; then
             aws ecr create-repository --repository-name "$IMAGE_NAME" \
-              --image-scanning-configuration scanOnPush=true >/dev/null
+              --image-scanning-configuration scanOnPush=true >/dev/null 2>&1 || \
+              echo "::warning::não deu para conferir/criar o repositório $IMAGE_NAME no ECR; ele precisa já existir"
+          fi
           registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com"
           aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
           echo "registry=$registry" >> "$GITHUB_OUTPUT"
@@ -321,6 +321,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     concurrency:
       group: deploy-${{ inputs.service }}
       cancel-in-progress: false
@@ -330,22 +331,20 @@ jobs:
       IMAGE: ${{ needs.build.outputs.image }}
       NAMESPACE: ${{ inputs.k8s-namespace }}
       CLUSTER: ${{ inputs.eks-cluster }}
-      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && inputs.aws-region != '' }}
+      HAS_AWS: ${{ vars.AWS_ROLE_ARN != '' && inputs.aws-region != '' }}
     steps:
 
       - name: Credenciais configuradas?
         if: env.HAS_AWS != 'true'
         run: |
-          echo "::error::EKS_CLUSTER definido mas faltam AWS_REGION ou os secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
+          echo "::error::EKS_CLUSTER definido mas faltam as variáveis AWS_REGION ou AWS_ROLE_ARN na org"
           exit 1
 
       - uses: actions/checkout@v7
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: kubeconfig do cluster

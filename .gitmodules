@@ -16,3 +16,6 @@
 [submodule "api/exchange-service"]
 	path = api/exchange-service
 	url = https://github.com/pna26/exchange-service.git
+[submodule "api/notification-service"]
+	path = api/notification-service
+	url = https://github.com/pna26/notification-service.git

@@ -16,7 +16,7 @@ próximos passos. Vídeo de **1 a 2 minutos** com o projeto e os bottlenecks.
 | 0:15–0:35 | Leonardo | **Arquitetura** (diagrama da [Home](index.md)): Nginx → réplicas do gateway → Auth, Account, Exchange; Redis, PostgreSQL/RDS, Kafka; tudo no EKS, com deploy pelo GitHub Actions. |
 | 0:35–1:05 | Nicolas | **Demonstração no EKS:** `kubectl get pods -n store`, cadastro e login pelo ELB, `GET /accounts` com e sem token (401), câmbio. E-mail de boas-vindas chegando pelo Kafka. |
 | 1:05–1:45 | todos | **Bottlenecks**, cada um os seus (tabela abaixo), com o número que mostra o efeito. Teste de carga com o HPA escalando o gateway. |
-| 1:45–2:00 | Gabriel | **Custos e conclusão:** ≈ US$ 0,27/h com tudo ligado, cluster apagado fora dos testes; próximos passos. |
+| 1:45–2:00 | Gabriel | **Custos e conclusão:** ≈ US$ 0,29/h com tudo ligado ([Custos](devops/custos-sla.md)), cluster apagado fora dos testes; próximos passos. |
 
 ## Bottlenecks (o que mostrar)
 
@@ -28,6 +28,22 @@ próximos passos. Vídeo de **1 a 2 minutos** com o projeto e os bottlenecks.
 | Cache da cotação | Gabriel | p95 da cotação de **49 ms → 4 ms** (−92 %) | [Cache da cotação](bottlenecks/exchange-cache.md) |
 | Observabilidade | Gabriel | Grafana explicou o teste de carga: CPU em 83–85 % e os 0,57 % de erro (`BindException` no Auth) | [Observabilidade](bottlenecks/observability.md) |
 | Mensageria (Kafka) | Nicolas | Cadastro em ~15 ms com o consumidor **ou** o Kafka fora; 0 eventos perdidos, 0 e-mails duplicados | [Mensageria](bottlenecks/messaging.md) |
+
+### Falas do Gabriel (proposta, ≈ 35 s no total)
+
+**Cache da cotação (≈ 10 s, tela: tabela de [Cache da cotação](bottlenecks/exchange-cache.md#resultados)).**
+"O Exchange depende de uma API de câmbio de terceiros, com limite de requisições. Guardando a cotação
+por 30 segundos, o p95 caiu de 49 para 4 milissegundos, e a API externa passa a receber no máximo duas
+chamadas por minuto, não importa a carga."
+
+**Observabilidade (≈ 10 s, tela: Grafana durante o teste com HPA).**
+"Prometheus e Grafana mostram cada réplica separada. Foi assim que explicamos o teste de carga: o cache
+do token poupou 99,7 % das chamadas ao Auth, e os erros sob saturação vinham do Auth sem pool de conexões."
+
+**Custos e conclusão (≈ 15 s, tela: tabela de custos).**
+"Tudo isso custa uns 29 centavos de dólar por hora no EKS, por isso o cluster só fica ligado para testar.
+Para uma plataforma deste tamanho, Fargate ou uma PaaS sairia mais barato; o EKS compensa com mais
+serviços dividindo os nós. Próximos passos: HTTPS, Multi-AZ no banco e o pool de conexões no Auth."
 
 ## Slides
 

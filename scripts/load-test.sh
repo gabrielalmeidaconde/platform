@@ -4,6 +4,8 @@
 #   ./scripts/load-test.sh                               # cenário mixed, perfil load, 50 VUs
 #   SCENARIO=auth PROFILE=stress VUS=50 ./scripts/load-test.sh
 #   BASE_URL=http://<elb-da-aws> ./scripts/load-test.sh  # contra o EKS
+#   BASE_URL=http://<elb> PROMETHEUS_RW_URL=http://host.docker.internal:9090 ./scripts/load-test.sh
+#                                                        # EKS + métricas no Prometheus do cluster
 #
 # Sem BASE_URL, o k6 entra na rede do compose e chama o lb por dentro (http://lb),
 # e manda as métricas para o Prometheus do compose (aparecem no Grafana, linha
@@ -44,6 +46,16 @@ if [ -z "${BASE_URL:-}" ]; then
 else
   ARGS+=(-e BASE_URL="$BASE_URL")
   TARGET="$BASE_URL"
+  # EKS: com "kubectl port-forward svc/prometheus 9090 -n store" aberto, as métricas
+  # do k6 vão para o Prometheus do cluster (o container chega no host por
+  # host.docker.internal):  PROMETHEUS_RW_URL=http://host.docker.internal:9090
+  if [ -n "${PROMETHEUS_RW_URL:-}" ]; then
+    ARGS+=(--add-host=host.docker.internal:host-gateway
+           -e K6_PROMETHEUS_RW_SERVER_URL="${PROMETHEUS_RW_URL%/}/api/v1/write"
+           -e "K6_PROMETHEUS_RW_TREND_STATS=p(95),p(99),avg,max"
+           -e K6_PROMETHEUS_RW_PUSH_INTERVAL=5s)
+    K6_ARGS+=(-o experimental-prometheus-rw)
+  fi
 fi
 
 echo ">> k6: cenário=$SCENARIO perfil=$PROFILE VUs=${VUS:-50} alvo=$TARGET"

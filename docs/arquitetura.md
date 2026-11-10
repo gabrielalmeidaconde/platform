@@ -121,9 +121,31 @@ Combinado entre o grupo (baseado no site do curso, hands-on 1 e 3, e no exercíc
 | Nomes dos serviços `auth`, `account`, `exchange`, `gateway` iguais no compose e no k8s | Os Feign clients usam `http://account:8080` e `http://auth:8080`. |
 | Só o `lb` publica porta | Gateway e serviços ficam na camada confiável; o header `id-account` só pode vir do gateway. |
 | Cache do token no Redis, chave = SHA-256 do JWT | Tira o Auth do caminho de toda requisição sem guardar o token em texto puro. |
-| Uma imagem por serviço no GHCR (e no ECR quando houver credenciais da AWS) | O pipeline publica imagens multi-arch (amd64 para o EKS, arm64 para os Macs do grupo). |
+| Uma imagem por serviço no GHCR e no ECR (via OIDC, sem chave da AWS no GitHub) | O pipeline publica imagens multi-arch (amd64 para o EKS, arm64 para os Macs do grupo). |
 
-!!! warning "Pendente: HTTPS"
+### HTTPS (limitação conhecida)
 
-    O cookie usa `SameSite=None`, que exige `Secure`. Em `localhost` o navegador aceita, mas no EKS o
-    acesso precisa ser HTTPS (certificado no balanceador). Responsáveis: Nicolas e Leonardo.
+O Auth devolve o token no cookie `__store_jwt_token` com `HttpOnly`, `Secure` e `SameSite=None`.
+O navegador só guarda um cookie `Secure` vindo de HTTPS (ou de `localhost`), então:
+
+| Onde | Situação |
+|---|---|
+| Compose local (`http://localhost`) | Funciona no navegador: `localhost` conta como origem segura. |
+| EKS (`http://<elb>.elb.amazonaws.com`) | O ELB atende só HTTP. Clientes que mandam o cookie no header (`curl`, `scripts/smoke-test.sh`, k6) funcionam; o **navegador descarta o cookie** e as rotas fechadas respondem 401. |
+
+**Por que não há HTTPS no EKS:** um certificado público do ACM exige um domínio validado por DNS, e o
+grupo não tem domínio; o nome do ELB é da AWS e muda a cada vez que o cluster é recriado. Um certificado
+autoassinado no Nginx faria o navegador mostrar alerta de segurança, o que não serve para uma loja.
+
+**Como ficaria em produção:** domínio próprio + certificado do ACM + TLS terminado no balanceador,
+com anotações no Service `lb` e redirecionamento de HTTP para HTTPS:
+
+``` yaml
+metadata:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-2:<conta>:certificate/<id>
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: http
+```
+
+Do balanceador para dentro o tráfego segue em HTTP, na rede privada do cluster (camada confiável).

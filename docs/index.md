@@ -59,11 +59,11 @@ Detalhes em [Arquitetura](arquitetura.md).
 | Tarefa | Peso | Responsável | Status |
 |---|---:|---|---|
 | [Gateway](servicos/gateway.md) | 5% | Leonardo | :material-check: pronto |
-| [Auth](servicos/auth.md) | 5% | Nicolas | código pronto; página em andamento |
-| [Account](servicos/account.md) | 5% | Nicolas | código pronto; página em andamento |
+| [Auth](servicos/auth.md) | 5% | Nicolas | :material-check: pronto |
+| [Account](servicos/account.md) | 5% | Nicolas | :material-check: pronto |
 | [Exchange](servicos/exchange.md) | 5% | Gabriel | :material-check: pronto |
 | [Bottlenecks](bottlenecks/index.md) | 20% | todos | 6 implementados e verificados no compose/CI; falta a verificação no EKS |
-| [AWS](devops/aws.md) | 5% | Nicolas | conta e role OIDC do CI configuradas; página em andamento |
+| [AWS](devops/aws.md) | 5% | Nicolas | :material-check: pronto (CI entra na AWS por OIDC desde 10/11) |
 | [EKS](devops/eks.md) | 10% | Nicolas | cluster testado em 08/11 (deploy manual + smoke test); falta o deploy pelo CI |
 | [CI/CD (GitHub Actions)](devops/ci-cd.md) | 10% | Leonardo | pipeline pronto em todos os repositórios; deploy no EKS via OIDC aguarda o cluster |
 | [Testes de carga](devops/load-testing.md) | 15% | Gabriel | feito no compose; falta a rodada no EKS com HPA |

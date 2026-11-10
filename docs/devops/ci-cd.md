@@ -145,7 +145,7 @@ variables → Actions → Variables), assim nenhum repositório precisa mudar:
 | `K8S_NAMESPACE` | `store` |
 | `EKS_CLUSTER` | `eks-store` (só depois que o cluster estiver no ar) |
 
-A role confia nos repositórios da org (`repo:pna26/*`) e pode: push/pull no ECR (os repositórios
+A role confia nos repositórios da org (`repo:pna26@317011053/*`, ver [AWS](aws.md#problemas-encontrados)) e pode: push/pull no ECR (os repositórios
 `gateway-service`, `auth-service`, `account-service` e `exchange-service` já são criados por fora) e
 `eks:DescribeCluster`. Para o `kubectl apply` ela também precisa de uma **access entry** no cluster
 com a política `AmazonEKSAdminPolicy` no namespace `store`: a `AmazonEKSEditPolicy` não deixa criar

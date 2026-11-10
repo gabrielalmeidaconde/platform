@@ -33,8 +33,8 @@ próximos passos. Vídeo de **1 a 2 minutos** com o projeto e os bottlenecks.
 
 **Cache da cotação (≈ 10 s, tela: tabela de [Cache da cotação](bottlenecks/exchange-cache.md#resultados)).**
 "O Exchange depende de uma API de câmbio de terceiros, com limite de requisições. Guardando a cotação
-por 30 segundos, o p95 caiu de 49 para 4 milissegundos, e a API externa passa a receber no máximo duas
-chamadas por minuto, não importa a carga."
+por 30 segundos, o p95 caiu de 49 para 4 milissegundos, e cada réplica chama a API externa no máximo
+duas vezes por minuto para cada par de moedas, não importa a carga."
 
 **Observabilidade (≈ 10 s, tela: Grafana durante o teste com HPA).**
 "Prometheus e Grafana mostram cada réplica separada. Foi assim que explicamos o teste de carga: o cache

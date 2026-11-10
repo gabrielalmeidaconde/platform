@@ -49,6 +49,8 @@ else
   # EKS: com "kubectl port-forward svc/prometheus 9090 -n store" aberto, as métricas
   # do k6 vão para o Prometheus do cluster (o container chega no host por
   # host.docker.internal):  PROMETHEUS_RW_URL=http://host.docker.internal:9090
+  # No Linux o port-forward precisa de --address 0.0.0.0 (o padrão só escuta em
+  # 127.0.0.1, que o container não alcança); no Docker Desktop funciona como está.
   if [ -n "${PROMETHEUS_RW_URL:-}" ]; then
     ARGS+=(--add-host=host.docker.internal:host-gateway
            -e K6_PROMETHEUS_RW_SERVER_URL="${PROMETHEUS_RW_URL%/}/api/v1/write"

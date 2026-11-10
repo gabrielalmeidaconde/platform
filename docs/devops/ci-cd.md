@@ -128,9 +128,12 @@ varredura acha algo, sem publicar nada.
 ## Configuração da AWS (alinhar com o Nicolas)
 
 O pipeline entra na AWS por **OIDC**: o job pede um token ao GitHub e assume uma role IAM, então
-nenhuma chave de acesso fica guardada no GitHub. Por isso todo `ci.yaml` que chama o `service.yaml`
-precisa de `id-token: write` em `permissions` (um workflow reutilizável não pode ter mais permissão
-que quem o chama; sem isso o workflow nem começa).
+nenhuma chave de acesso fica guardada no GitHub. Por isso o `ci.yaml` de quem publica imagem precisa
+de `id-token: write` em `permissions`. Os jobs do `service.yaml` não declaram permissões e herdam as
+do `ci.yaml`: um reutilizável não pode ter mais permissão que quem o chama, e se ele pedisse
+`id-token: write` todo repositório sem essa linha ficaria sem CI. Assim, sem a linha, o pipeline roda
+igual, publica só no GHCR e avisa que pulou o ECR; o deploy no EKS falha com a mensagem do que falta.
+As bibliotecas (`account`, `auth`) não publicam imagem e não precisam dela.
 
 O deploy só liga quando estas variáveis existem na **organização** `pna26` (Settings → Secrets and
 variables → Actions → Variables), assim nenhum repositório precisa mudar:

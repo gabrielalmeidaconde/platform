@@ -62,6 +62,7 @@ varredura acha algo, sem publicar nada.
       contents: read
       packages: write
       security-events: write
+      id-token: write             # OIDC na AWS
     jobs:
       pipeline:
         uses: pna26/platform/.github/workflows/service.yaml@main
@@ -83,6 +84,7 @@ varredura acha algo, sem publicar nada.
       contents: read
       packages: write
       security-events: write
+      id-token: write             # OIDC na AWS
     jobs:
       pipeline:
         uses: pna26/platform/.github/workflows/service.yaml@main
@@ -109,6 +111,7 @@ varredura acha algo, sem publicar nada.
       contents: read
       packages: write
       security-events: write
+      id-token: write             # OIDC na AWS
     jobs:
       pipeline:
         uses: pna26/platform/.github/workflows/service.yaml@main
@@ -124,25 +127,33 @@ varredura acha algo, sem publicar nada.
 
 ## Configuração da AWS (alinhar com o Nicolas)
 
-O deploy só liga quando estas configurações existem na **organização** `pna26` (Settings → Secrets and
-variables → Actions), assim nenhum repositório precisa mudar:
+O pipeline entra na AWS por **OIDC**: o job pede um token ao GitHub e assume uma role IAM, então
+nenhuma chave de acesso fica guardada no GitHub. Por isso o `ci.yaml` de quem publica imagem precisa
+de `id-token: write` em `permissions`. Os jobs do `service.yaml` não declaram permissões e herdam as
+do `ci.yaml`: um reutilizável não pode ter mais permissão que quem o chama, e se ele pedisse
+`id-token: write` todo repositório sem essa linha ficaria sem CI. Assim, sem a linha, o pipeline roda
+igual, publica só no GHCR e avisa que pulou o ECR; o deploy no EKS falha com a mensagem do que falta.
+As bibliotecas (`account`, `auth`) não publicam imagem e não precisam dela.
 
-| Tipo | Nome | Exemplo |
-|---|---|---|
-| Variable | `AWS_REGION` | `us-east-2` |
-| Variable | `EKS_CLUSTER` | `eks-store` |
-| Variable | `K8S_NAMESPACE` | `store` (padrão) |
-| Secret | `AWS_ACCESS_KEY_ID` | chave de um usuário IAM só para o CI |
-| Secret | `AWS_SECRET_ACCESS_KEY` | |
-| Secret | `AWS_SESSION_TOKEN` | só se a conta usar credenciais temporárias (Learner Lab) |
+O deploy só liga quando estas variáveis existem na **organização** `pna26` (Settings → Secrets and
+variables → Actions → Variables), assim nenhum repositório precisa mudar:
 
-O usuário IAM do CI precisa de: `AmazonEC2ContainerRegistryPowerUser` (push no ECR),
-`eks:DescribeCluster` e uma **access entry** no cluster EKS com a política
-`AmazonEKSEditPolicy` no namespace `store` (para o `kubectl apply`).
+| Variável | Valor |
+|---|---|
+| `AWS_ROLE_ARN` | `arn:aws:iam::637423273088:role/github-actions-pna26` |
+| `AWS_REGION` | `us-east-2` |
+| `K8S_NAMESPACE` | `store` |
+| `EKS_CLUSTER` | `eks-store` (só depois que o cluster estiver no ar) |
 
-!!! tip "Sem credenciais da AWS"
+A role confia nos repositórios da org (`repo:pna26/*`) e pode: push/pull no ECR (os repositórios
+`gateway-service`, `auth-service`, `account-service` e `exchange-service` já são criados por fora) e
+`eks:DescribeCluster`. Para o `kubectl apply` ela também precisa de uma **access entry** no cluster
+com a política `AmazonEKSAdminPolicy` no namespace `store`: a `AmazonEKSEditPolicy` não deixa criar
+`Role`/`RoleBinding`, que o `infra` aplica para o Prometheus.
 
-    Sem os secrets, o pipeline continua fazendo build, testes, varredura e publica as imagens no
+!!! tip "Sem AWS"
+
+    Sem `AWS_ROLE_ARN`, o pipeline continua fazendo build, testes, varredura e publica as imagens no
     **GHCR**. O EKS consegue puxar do GHCR desde que os pacotes estejam públicos.
 
 ## Outros workflows do `platform`

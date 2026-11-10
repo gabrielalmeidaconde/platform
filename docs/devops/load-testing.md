@@ -164,15 +164,19 @@ do gateway quando a CPU média passa de 50 % do `request` (250m → 125m por pod
 
 !!! warning "Antes de começar"
 
-    - **metrics-server** instalado no cluster (o EKS não traz; sem ele o HPA fica em `<unknown>`).
-    - **Cenário `auth` (ou `mixed`), não `exchange`:** a AwesomeAPI devolveu `429` para o IP da AWS, então
-      o Exchange responde `503` no EKS.
+    - **metrics-server** instalado no cluster (o EKS não traz, e o `eks-store.yaml` não instala; sem ele o
+      HPA fica em `<unknown>`). Instalar e conferir:
+      `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
+      e, depois de ≈ 1 min, `kubectl top nodes`.
+    - **Cenário `auth`, não `exchange` nem `mixed`:** a AwesomeAPI devolveu `429` para o IP da AWS, então
+      o Exchange responde `503` no EKS (o `mixed` tem 15 % de câmbio: sairiam ≈ 15 % de erro).
     - **Ninguém faz push na `main` durante a gravação:** o deploy do CI faz `kubectl apply` do manifesto
       do gateway (`replicas: 2`) e briga com o HPA.
     - **Capacidade:** os 2 nós fixos têm espaço para **mais ≈ 6 réplicas do gateway** (conta em
-      [Custos](custos-sla.md#o-que-precisa-rodar)). Com `--max=10`, as réplicas 9 e 10 ficariam *Pending*.
-      Por isso o roteiro usa `--max=6`; se o grupo preferir mostrar o limite, `--max=10` e os *Pending*
-      viram parte do resultado.
+      [Custos](custos-sla.md#o-que-precisa-rodar)), 8 no total. Com `--max=10`, as réplicas 9 e 10 ficariam
+      *Pending*. O roteiro usa `--max=6` para ter folga: a sobra está dividida entre os 2 nós (≈ 0,8 vCPU
+      em cada) e um pod não usa pedaços de nós diferentes, então a 7ª e a 8ª podem não caber. Se o grupo
+      preferir mostrar o limite, `--max=10` e os *Pending* viram parte do resultado.
 
 **Três terminais lado a lado** (no Windows não existe `watch`; o `-w` do `kubectl` faz o mesmo):
 
@@ -195,6 +199,7 @@ do gateway quando a CPU média passa de 50 % do `request` (250m → 125m por pod
     ELB=$(kubectl get svc lb -n store -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
     # (opcional) métricas do k6 no Grafana do cluster: noutro terminal,
     #   kubectl port-forward svc/prometheus 9090 -n store
+    #   (no Linux, com --address 0.0.0.0: senão o container do k6 não alcança o port-forward)
     BASE_URL=http://$ELB PROMETHEUS_RW_URL=http://host.docker.internal:9090 \
       NAME=eks-hpa SCENARIO=auth PROFILE=load VUS=100 DURATION=4m THINK=0 ./scripts/load-test.sh
     ```

@@ -248,3 +248,15 @@ para continuar gravando e mostrar a volta para 2.
     ``` { .bash .copy }
     --8<-- "scripts/load-matrix.sh"
     ```
+
+=== "scripts/kind-up.sh"
+
+    ``` { .bash .copy }
+    --8<-- "scripts/kind-up.sh"
+    ```
+
+=== "scripts/hpa-record.py"
+
+    ``` { .python .copy }
+    --8<-- "scripts/hpa-record.py"
+    ```

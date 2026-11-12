@@ -183,8 +183,9 @@ do gateway quando a CPU média passa de 50 % do `request` (250m → 125m por pod
 === "1 · HPA"
 
     ``` bash
-    kubectl autoscale deployment gateway --cpu-percent=50 --min=2 --max=6 -n store
+    kubectl autoscale deployment gateway --cpu=50% --min=2 --max=6 -n store
     kubectl get hpa gateway -n store -w
+    # --cpu-percent=50 é a forma antiga: o kubectl 1.36 ainda aceita, mas avisa que foi descontinuada
     ```
 
 === "2 · Pods do gateway"
